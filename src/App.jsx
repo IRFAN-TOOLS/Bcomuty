@@ -31,7 +31,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Import icons from lucide-react
 import { 
-    Home, MessageSquareText, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon
+    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon
 } from 'lucide-react';
 
 // Firebase Configuration
@@ -240,7 +240,7 @@ function App() {
             <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
                 <div className="flex justify-around items-center max-w-md mx-auto h-16">
                     <NavItem icon={<Home />} label="Beranda" active={currentView === 'feed'} onClick={() => {setCurrentView('feed'); setSelectedChat(null);}} />
-                    <NavItem icon={<MessageSquareText />} label="Pesan" active={currentView === 'chatList' || currentView === 'chat' || currentView === 'findFriends'} onClick={() => {setCurrentView('chatList'); setSelectedChat(null);}} />
+                    <NavItem icon={<MessageSquare />} label="Pesan" active={currentView === 'chatList' || currentView === 'chat' || currentView === 'findFriends'} onClick={() => {setCurrentView('chatList'); setSelectedChat(null);}} />
                     <button 
                         onClick={() => setShowCreatePostModal(true)}
                         className="absolute left-1/2 top-0 transform -translate-x-1/2 -translate-y-[calc(50%-8px)] bg-indigo-600 text-white rounded-full p-3.5 shadow-xl hover:bg-indigo-700 transition duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50"
@@ -815,7 +815,7 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
             </div>
             {chats.length === 0 && (
                 <div className="flex-grow flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                    <MessageSquareText size={56} className="mb-4 opacity-40" />
+                    <MessageSquare size={56} className="mb-4 opacity-40" />
                     <p className="text-lg">Anda belum memiliki percakapan.</p>
                     <p className="text-sm">Mulai chat dengan mencari teman atau pengguna lain.</p>
                 </div>
