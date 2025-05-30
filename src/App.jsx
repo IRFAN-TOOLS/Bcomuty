@@ -52,6 +52,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// ❗❗ Tambahkan ini kalau belum ada:
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
 // Helper function to get user ID
 const getCurrentUserId = () => auth.currentUser?.uid || null;
 
