@@ -162,12 +162,12 @@ function App() {
     
 const handleLogin = async () => {
   try {
-    console.log("Tombol diklik");
     const result = await signInWithPopup(auth, provider);
     console.log("Login berhasil:", result.user);
+    // lanjutkan ke halaman lain / set user state
   } catch (error) {
-    console.error("Google Sign-in Error:", error.code, error.message);
     alert("Login gagal: " + error.message);
+    console.error("Login gagal:", error);
   }
 };
     
