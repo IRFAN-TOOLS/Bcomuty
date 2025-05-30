@@ -42,7 +42,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
   storageBucket: "bgune---community.firebasestorage.app",
   messagingSenderId: "749511144215",
   appId: "1:749511144215:web:dcf13c4d59dc705d4f7d52",
-  measurementId: "G-5XRSG2H5SV"
+  measurementId: "G-5XRSG2H5SV" };
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'bgune-komunitas-app-revised';
 
