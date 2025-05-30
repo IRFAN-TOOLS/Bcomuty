@@ -155,16 +155,18 @@ function App() {
 
         return () => unsubscribe();
     }, []);
-
-    const handleLogin = async () => {
-        const provider = new GoogleAuthProvider();
-        try {
-            await signInWithPopup(auth, provider);
-        } catch (error) {
-            console.error("Error during Google sign-in:", error);
-            // You could show a user-friendly message here
-        }
-    };
+    
+const handleLogin = async () => {
+  try {
+    console.log("Tombol diklik");
+    const result = await signInWithPopup(auth, provider);
+    console.log("Login berhasil:", result.user);
+  } catch (error) {
+    console.error("Google Sign-in Error:", error.code, error.message);
+    alert("Login gagal: " + error.message);
+  }
+};
+    
 
     const handleLogout = async () => {
         try {
