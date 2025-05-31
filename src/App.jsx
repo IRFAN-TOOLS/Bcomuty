@@ -61,15 +61,15 @@ const getCurrentUserId = () => auth.currentUser?.uid || null;
 
 // Firestore collection paths
 const getCollectionPath = (collectionName, isPublic = false) => {
-  const userId = getCurrentUserId();
-  if (isPublic) {
-    return `/artifacts/${appId}/public/data/${collectionName}`;
-  }
-  if (!userId) {
-    console.warn("User not authenticated for private collection access.");
-    return `/artifacts/${appId}/users/anonymous/data/${collectionName}`; // ✅ ADA `/data/`
-  }
-  return `/artifacts/${appId}/users/${userId}/data/${collectionName}`; // ✅ ADA `/data/`
+    const userId = getCurrentUserId();
+    if (isPublic) {
+        return `/artifacts/${appId}/public/data/${collectionName}`;
+    }
+    if (!userId) {
+        console.warn("User not authenticated for private collection access.");
+        return `/artifacts/${appId}/users/anonymous/data/${collectionName}`;
+    }
+    return `/artifacts/${appId}/users/${userId}/data/${collectionName}`;
 };
 
 
