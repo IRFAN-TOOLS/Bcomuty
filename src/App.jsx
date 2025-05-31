@@ -27,18 +27,18 @@ import {
     getDocs,
     Timestamp,
     deleteDoc,
-    increment // Ditambahkan untuk increment
+    increment 
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // Import icons from lucide-react
 import { 
-    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2, Check, CheckCheck // Ditambahkan Check, CheckCheck
+    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2, Check, CheckCheck, Pin, PinOff
 } from 'lucide-react';
 
 // Firebase Configuration
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // Ganti dengan API key Anda jika tidak disediakan oleh environment
+    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", 
     authDomain: "bgune---community.firebaseapp.com",
     projectId: "bgune---community",
     storageBucket: "bgune---community.appspot.com",
@@ -68,8 +68,7 @@ const getCollectionPath = (collectionName, isPublic = false) => {
     }
     if (!userId) {
         console.warn("User not authenticated for private collection access.");
-        // Fallback ke path umum jika user tidak ada, atau handle sesuai kebutuhan
-        return `/artifacts/${appId}/public/data/${collectionName}`; // Atau path khusus untuk anonim
+        return `/artifacts/${appId}/public/data/${collectionName}`; 
     }
     return `/artifacts/${appId}/users/${userId}/data/${collectionName}`;
 };
@@ -104,7 +103,7 @@ function App() {
     const [loadingAuth, setLoadingAuth] = useState(true);
     const [isProfileComplete, setIsProfileComplete] = useState(false);
     const [currentView, setCurrentView] = useState('feed'); 
-    const [selectedChat, setSelectedChat] = useState(null); // { chatId, otherUserName, otherUserPhotoURL, otherUserId }
+    const [selectedChat, setSelectedChat] = useState(null); // { chatId, otherUserName, otherUserPhotoURL, otherUserId, isAI }
     const [showCreatePostModal, setShowCreatePostModal] = useState(false);
 
     useEffect(() => {
@@ -160,15 +159,10 @@ function App() {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
-                    // await signInAnonymously(auth); // Pertimbangkan apakah login anonim diperlukan jika token tidak ada
                     console.log("No initial auth token, user needs to login manually or anonymous sign-in can be enabled.");
                 }
             } catch (error) {
                 console.error("Initial sign-in error:", error);
-                if (!auth.currentUser) {
-                    // try { await signInAnonymously(auth); } // Fallback
-                    // catch (anonError) { console.error("Anonymous sign-in fallback error:", anonError); }
-                }
             }
         };
         attemptInitialSignIn();
@@ -202,7 +196,6 @@ function App() {
             // onAuthStateChanged will handle setting user state and profile completion check
         } catch (error) {
             console.error("Login gagal:", error);
-            // Provide user feedback, e.g., using a toast notification library
             setLoadingAuth(false);
         }
     };
@@ -225,11 +218,9 @@ function App() {
         }
     };
 
-    const completeProfile = async (profileData) => { // Terima profileData dari ProfileSetup
+    const completeProfile = async (profileData) => { 
         if (auth.currentUser) {
-            // setUser akan diupdate oleh onAuthStateChanged setelah profile diupdate dan dibaca ulang
-            // Cukup set isProfileComplete ke true
-            setUser(prevUser => ({ ...prevUser, ...profileData })); // Optimistic update
+            setUser(prevUser => ({ ...prevUser, ...profileData })); 
             setIsProfileComplete(true);
         }
     };
@@ -245,6 +236,18 @@ function App() {
             otherUserName: otherUser.displayName,
             otherUserPhotoURL: otherUser.photoURL,
             otherUserId: otherUser.uid,
+            isAI: false, // Ini adalah chat dengan pengguna lain
+        });
+        setCurrentView('chat');
+    };
+
+    const openAIChat = () => {
+        setSelectedChat({
+            chatId: `ai_chat_${user.uid}`, // ID chat unik untuk AI per pengguna
+            otherUserName: "Bgune AI",
+            otherUserPhotoURL: "https://placehold.co/100x100/4F46E5/FFFFFF?text=AI", // Placeholder untuk AI
+            otherUserId: "bgune_ai_bot", // ID khusus untuk AI
+            isAI: true,
         });
         setCurrentView('chat');
     };
@@ -263,11 +266,15 @@ function App() {
     
     const MainContent = () => {
         if (selectedChat && currentView === 'chat') {
-            return <ChatWindow chat={selectedChat} currentUser={user} onBack={() => {setSelectedChat(null); setCurrentView('chatList');}} />;
+            if (selectedChat.isAI) {
+                return <AIChatWindow chat={selectedChat} currentUser={user} onBack={() => {setSelectedChat(null); setCurrentView('chatList');}} />;
+            } else {
+                return <ChatWindow chat={selectedChat} currentUser={user} onBack={() => {setSelectedChat(null); setCurrentView('chatList');}} />;
+            }
         }
         switch (currentView) {
             case 'feed': return <Feed currentUser={user} />;
-            case 'chatList': return <ChatList currentUser={user} onSelectChat={openChatWithUser} onFindFriends={() => setCurrentView('findFriends')} />;
+            case 'chatList': return <ChatList currentUser={user} onSelectChat={openChatWithUser} onFindFriends={() => setCurrentView('findFriends')} onOpenAIChat={openAIChat} />;
             case 'updates': return <UpdatesPage />;
             case 'profile': return <ProfilePage currentUser={user} onLogout={handleLogout} />;
             case 'findFriends': return <FindFriendsPage currentUser={user} onStartChat={openChatWithUser} onBack={() => setCurrentView('chatList')} />;
@@ -337,15 +344,21 @@ function ProfileSetup({ user, onProfileComplete }) {
     const [error, setError] = useState('');
 
     const handlePhotoChange = (e) => {
+        setError('');
         if (e.target.files[0]) {
             const file = e.target.files[0];
             if (file.size > 2 * 1024 * 1024) { // Max 2MB
                 setError("Ukuran foto maksimal 2MB.");
                 return;
             }
+            if (!['image/jpeg', 'image/png'].includes(file.type)) { // Hanya izinkan JPG dan PNG
+                setError("Format foto tidak didukung (hanya JPG, PNG).");
+                return;
+            }
             setError('');
             setPhotoFile(file);
             setPhotoPreview(URL.createObjectURL(file));
+            e.target.value = null; // Reset input file agar event onChange terpicu lagi jika file yang sama dipilih
         }
     };
 
@@ -365,8 +378,9 @@ function ProfileSetup({ user, onProfileComplete }) {
                 const snapshot = await uploadBytes(photoRef, photoFile);
                 photoURLToSave = await getDownloadURL(snapshot.ref);
             } catch (uploadError) {
-                console.error("Error uploading photo:", uploadError);
-                setError("Gagal mengunggah foto profil. Coba lagi.");
+                // Penanganan kesalahan lebih detail
+                console.error("Error uploading photo for ProfileSetup:", uploadError);
+                setError(`Gagal mengunggah foto profil: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
                 setIsSaving(false);
                 return;
             }
@@ -376,19 +390,18 @@ function ProfileSetup({ user, onProfileComplete }) {
         const profileData = {
             uid: user.uid,
             displayName: displayName.trim(),
-            email: user.email, // Pastikan email disimpan jika belum ada
+            email: user.email, 
             photoURL: photoURLToSave,
             bio: bio.trim(),
-            // createdAt sudah ada jika ini update, jika baru, tambahkan serverTimestamp()
             createdAt: user.createdAt || serverTimestamp(), 
             updatedAt: serverTimestamp(),
-            isOnline: true, // Set online saat profil selesai
+            isOnline: true, 
             lastActive: serverTimestamp()
         };
 
         try {
             await setDoc(userDocRef, profileData, { merge: true });
-            onProfileComplete(profileData); // Kirim data profil yang baru disimpan
+            onProfileComplete(profileData); 
         } catch (saveError) {
             console.error("Error saving profile:", saveError);
             setError("Gagal menyimpan profil. Coba lagi.");
@@ -478,7 +491,6 @@ function Feed({ currentUser }) {
                     const userSnap = await getDoc(userDocRef);
                     post.author = userSnap.exists() ? userSnap.data() : { displayName: 'Pengguna Anonim', photoURL: `https://placehold.co/40x40/CBD5E1/475569?text=A` };
                 }
-                // Pastikan likes dan commentsCount ada, default ke array kosong atau 0
                 post.likes = post.likes || [];
                 post.commentsCount = post.commentsCount || 0;
                 return post;
@@ -495,9 +507,6 @@ function Feed({ currentUser }) {
     }, []);
 
     const handlePostUpdate = () => {
-        // Fungsi ini bisa digunakan jika ada kebutuhan refresh manual,
-        // tapi onSnapshot seharusnya sudah menangani update otomatis.
-        // Untuk saat ini, bisa dibiarkan kosong atau digunakan untuk logging.
         console.log("Post list potentially updated.");
     };
 
@@ -514,8 +523,8 @@ function Feed({ currentUser }) {
                     key={post.id} 
                     post={post} 
                     currentUser={currentUser} 
-                    onPostEdited={handlePostUpdate} // Callback jika diperlukan
-                    onPostDeleted={handlePostUpdate} // Callback jika diperlukan
+                    onPostEdited={handlePostUpdate} 
+                    onPostDeleted={handlePostUpdate} 
                 />
             ))}
         </div>
@@ -545,7 +554,7 @@ function CreatePostModal({ currentUser, onClose }) {
             }
             setImageFile(file);
             setImagePreview(URL.createObjectURL(file));
-            e.target.value = null; // Reset input file
+            e.target.value = null; 
         }
     };
     
@@ -573,15 +582,15 @@ function CreatePostModal({ currentUser, onClose }) {
         if (videoUrl.trim()) {
             finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
             if (!finalVideoUrl) {
-                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=VIDEO_ID");
-                setIsPosting(false); // Hentikan posting jika URL video tidak valid
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+                setIsPosting(false); 
                 return;
             }
         }
 
         setIsPosting(true);
         let imageUrlToStore = '';
-        let imageStoragePath = ''; // Simpan path untuk penghapusan jika diperlukan
+        let imageStoragePath = ''; 
         if (imageFile) {
             imageStoragePath = `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
             const imageRef = ref(storage, imageStoragePath);
@@ -589,8 +598,9 @@ function CreatePostModal({ currentUser, onClose }) {
                 const snapshot = await uploadBytes(imageRef, imageFile);
                 imageUrlToStore = await getDownloadURL(snapshot.ref);
             } catch (uploadError) {
+                // Penanganan kesalahan lebih detail
                 console.error("Error uploading image for post:", uploadError);
-                setError("Gagal mengunggah gambar. Coba lagi.");
+                setError(`Gagal mengunggah gambar: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
                 setIsPosting(false);
                 return;
             }
@@ -602,7 +612,7 @@ function CreatePostModal({ currentUser, onClose }) {
                 userId: currentUser.uid,
                 text: text.trim(),
                 imageUrl: imageUrlToStore,
-                imageStoragePath: imageStoragePath, // Simpan path storage
+                imageStoragePath: imageStoragePath, 
                 videoUrl: finalVideoUrl,
                 createdAt: serverTimestamp(),
                 likes: [],
@@ -661,7 +671,7 @@ function CreatePostModal({ currentUser, onClose }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=VIDEO_ID"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -683,7 +693,8 @@ function CreatePostModal({ currentUser, onClose }) {
 function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const [text, setText] = useState(post.text);
     const [imageFile, setImageFile] = useState(null);
-    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? `https://www.youtube.com/watch?v=${post.videoUrl.split('/').pop()}` : ''); // Konversi balik ke URL standar
+    // Mengkonversi URL embed kembali ke URL standar YouTube untuk tampilan di input
+    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? `https://www.youtube.com/watch?v=${post.videoUrl.split('/').pop()}` : ''); 
     const [imagePreview, setImagePreview] = useState(post.imageUrl || null);
     const [isUpdating, setIsUpdating] = useState(false);
     const [error, setError] = useState('');
@@ -721,7 +732,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        if (!text.trim() && !imageFile && !videoUrl.trim() && !imagePreview) { // Cek imagePreview juga
+        if (!text.trim() && !imageFile && !videoUrl.trim() && !imagePreview) { 
             setError("Postingan tidak boleh kosong. Isi teks, gambar, atau video.");
             return;
         }
@@ -730,7 +741,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
         if (videoUrl.trim()) {
             finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
             if (!finalVideoUrl) {
-                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=VIDEO_ID");
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
                 setIsUpdating(false);
                 return;
             }
@@ -742,8 +753,8 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
 
 
         // Handle image update/removal
-        if (imageFile) { // Gambar baru dipilih
-            // Hapus gambar lama dari storage jika ada dan berbeda
+        if (imageFile) { 
+            // Jika ada gambar lama dan path-nya berbeda (artinya diganti dengan gambar baru), hapus gambar lama
             if (post.imageStoragePath && post.imageStoragePath !== imageStoragePathToStore) {
                 try {
                     const oldImageRef = ref(storage, post.imageStoragePath);
@@ -759,12 +770,13 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                 const snapshot = await uploadBytes(newImageRef, imageFile);
                 imageUrlToStore = await getDownloadURL(snapshot.ref);
             } catch (uploadError) {
+                // Penanganan kesalahan lebih detail
                 console.error("Error uploading new image for post:", uploadError);
-                setError("Gagal mengunggah gambar baru. Coba lagi.");
+                setError(`Gagal mengunggah gambar baru: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
                 setIsUpdating(false);
                 return;
             }
-        } else if (imagePreview === null && post.imageUrl) { // Gambar dihapus oleh pengguna
+        } else if (imagePreview === null && post.imageUrl) { // Jika gambar dihapus (imagePreview jadi null tapi sebelumnya ada gambar)
             if (post.imageStoragePath) {
                 try {
                     const imageToDeleteRef = ref(storage, post.imageStoragePath);
@@ -841,7 +853,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=VIDEO_ID"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -892,7 +904,7 @@ function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel, isDeleting }
 function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
     const [liked, setLiked] = useState(post.likes?.includes(currentUser.uid) || false);
     const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
-    const [currentCommentsCount, setCurrentCommentsCount] = useState(post.commentsCount || 0); // State lokal untuk jumlah komentar
+    const [currentCommentsCount, setCurrentCommentsCount] = useState(post.commentsCount || 0); 
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState('');
@@ -904,7 +916,6 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
 
     const isMyPost = post.userId === currentUser.uid;
 
-    // Update state lokal jika prop post berubah (misalnya dari onSnapshot di Feed)
     useEffect(() => {
         setLiked(post.likes?.includes(currentUser.uid) || false);
         setLikesCount(post.likes?.length || 0);
@@ -913,22 +924,22 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
 
 
     const handleLike = async () => {
-        if (!currentUser || !post.id) return;
+        if (!currentUser || !post.id) {
+            console.warn("handleLike: Current user or post ID is missing.");
+            return;
+        }
         const postRef = doc(db, getCollectionPath('posts', true), post.id);
         try {
             if (liked) {
                 await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
-                // State lokal diupdate oleh useEffect di atas saat post.likes berubah dari snapshot
             } else {
                 await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
-                // State lokal diupdate oleh useEffect
             }
-            // Optimistic update untuk UI lebih responsif sebelum snapshot kembali
             setLiked(!liked);
             setLikesCount(prev => liked ? prev -1 : prev + 1);
 
         } catch (error) {
-            console.error("Error updating like:", error);
+            console.error("handleLike: Error updating like:", error);
         }
     };
     
@@ -970,7 +981,10 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
 
     const handleAddComment = async (e) => {
         e.preventDefault();
-        if (!newComment.trim() || !currentUser || !post.id) return;
+        if (!newComment.trim() || !currentUser || !post.id) {
+            console.warn("handleAddComment: New comment, current user, or post ID is missing.");
+            return;
+        }
         
         const commentsRef = collection(db, getCollectionPath('posts', true), post.id, 'comments');
         try {
@@ -979,13 +993,11 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                 userId: currentUser.uid,
                 createdAt: serverTimestamp()
             });
-            // Update commentsCount di post document
             const postRef = doc(db, getCollectionPath('posts', true), post.id);
             await updateDoc(postRef, { commentsCount: increment(1) }); 
-            // State lokal commentsCount akan diupdate oleh useEffect saat post.commentsCount berubah dari snapshot
             setNewComment('');
         } catch (error) {
-            console.error("Error adding comment:", error);
+            console.error("handleAddComment: Error adding comment:", error);
         }
     };
 
@@ -995,17 +1007,14 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
         setIsDeletingPost(true);
 
         try {
-            // Hapus gambar dari storage jika ada
-            if (post.imageStoragePath) { // Gunakan imageStoragePath
+            if (post.imageStoragePath) { 
                 const imageRef = ref(storage, post.imageStoragePath);
                 await deleteObject(imageRef);
             }
-            // Hapus dokumen post
             await deleteDoc(doc(db, getCollectionPath('posts', true), post.id));
             if (onPostDeleted) onPostDeleted(post.id); 
         } catch (error) {
             console.error("Error deleting post:", error);
-            // Tampilkan pesan error ke pengguna jika perlu
         } finally {
             setIsDeletingPost(false);
         }
@@ -1054,7 +1063,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                 {post.videoUrl && (
                     <div className="aspect-video mb-4 rounded-lg overflow-hidden border border-slate-200">
                         <iframe 
-                            src={post.videoUrl} // Ini sudah URL embed
+                            src={post.videoUrl} 
                             title="Video Postingan" 
                             frameBorder="0" 
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
@@ -1115,7 +1124,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                     onClose={() => setShowEditModal(false)} 
                     onPostUpdated={() => {
                         if(onPostEdited) onPostEdited();
-                        setShowEditModal(false); // Tutup modal setelah update
+                        setShowEditModal(false); 
                     }}
                 />
             )}
@@ -1132,7 +1141,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
 }
 
 
-function ChatList({ currentUser, onSelectChat, onFindFriends }) {
+function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
     const [chats, setChats] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -1143,11 +1152,17 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
         }
 
         const chatRoomsRef = collection(db, getCollectionPath('chatRooms', true));
-        const q = query(chatRoomsRef, where('members', 'array-contains', currentUser.uid), orderBy('updatedAt', 'desc'));
+        // Query untuk chatroom yang melibatkan pengguna saat ini
+        const q = query(chatRoomsRef, where('members', 'array-contains', currentUser.uid));
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
             const chatListDataPromises = snapshot.docs.map(async (roomDoc) => {
                 const roomData = roomDoc.data();
+                // Filter out AI chat from this list if it's handled separately
+                if (roomData.members.includes("bgune_ai_bot")) {
+                    return null; // Skip AI chat here, it will be a static entry
+                }
+
                 const otherUserId = roomData.members.find(id => id !== currentUser.uid);
                 if (otherUserId) {
                     const userDocRef = doc(db, getCollectionPath('profiles', true), otherUserId);
@@ -1161,13 +1176,25 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
                             otherUserPhotoURL: otherUser.photoURL,
                             lastMessage: roomData.lastMessage?.text || "...",
                             lastMessageTimestamp: roomData.lastMessage?.timestamp,
-                            // Anda bisa menambahkan unread count di sini jika diimplementasikan
+                            isPinned: roomData.pinnedBy && roomData.pinnedBy.includes(currentUser.uid), // Cek apakah di-pin oleh pengguna ini
+                            updatedAt: roomData.updatedAt, // Untuk sorting
                         };
                     }
                 }
                 return null;
             });
             const chatListData = (await Promise.all(chatListDataPromises)).filter(Boolean);
+            
+            // Sort chats: pinned first, then by last message timestamp
+            chatListData.sort((a, b) => {
+                if (a.isPinned && !b.isPinned) return -1;
+                if (!a.isPinned && b.isPinned) return 1;
+                // If both are pinned or both are not, sort by timestamp
+                const timeA = a.lastMessageTimestamp?.toDate() || new Date(0);
+                const timeB = b.lastMessageTimestamp?.toDate() || new Date(0);
+                return timeB.getTime() - timeA.getTime();
+            });
+
             setChats(chatListData);
             setLoading(false);
         }, (error) => {
@@ -1178,6 +1205,21 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
         return () => unsubscribe();
     }, [currentUser]);
 
+    const handlePinToggle = async (chatItem) => {
+        if (!currentUser || !chatItem.chatId) return;
+        const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chatItem.chatId);
+        try {
+            if (chatItem.isPinned) {
+                await updateDoc(chatRoomRef, { pinnedBy: arrayRemove(currentUser.uid) });
+            } else {
+                await updateDoc(chatRoomRef, { pinnedBy: arrayUnion(currentUser.uid) });
+            }
+        } catch (error) {
+            console.error("Error toggling pin status:", error);
+        }
+    };
+
+
     if (loading) {
         return <div className="p-6 text-center text-slate-500">Memuat daftar chat...</div>;
     }
@@ -1186,13 +1228,22 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
         <div className="h-full flex flex-col bg-slate-50">
              <div className="p-4 sm:p-5 border-b border-slate-200 bg-white sticky top-0 z-10">
                 <h2 className="text-2xl font-semibold text-slate-800 mb-3">Pesan Pribadi</h2>
-                <button 
-                    onClick={onFindFriends} 
-                    className="w-full flex items-center justify-center space-x-2 bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150"
-                >
-                    <Search size={20} />
-                    <span>Cari & Mulai Chat Baru</span>
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <button 
+                        onClick={onFindFriends} 
+                        className="flex-1 flex items-center justify-center space-x-2 bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                    >
+                        <Search size={20} />
+                        <span>Cari & Mulai Chat</span>
+                    </button>
+                    <button 
+                        onClick={onOpenAIChat} 
+                        className="flex-1 flex items-center justify-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white font-medium py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                    >
+                        <MessageSquare size={20} />
+                        <span>Chat dengan AI</span>
+                    </button>
+                </div>
             </div>
             {chats.length === 0 && (
                 <div className="flex-grow flex flex-col items-center justify-center text-slate-500 p-6 text-center">
@@ -1202,18 +1253,17 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
                 </div>
             )}
             <div className="flex-grow overflow-y-auto">
-                {chats.map(chatItem => ( // Ganti nama variabel agar tidak konflik
+                {chats.map(chatItem => ( 
                     <div
                         key={chatItem.chatId}
-                        onClick={() => onSelectChat({ // Pastikan onSelectChat menerima objek user lengkap
+                        className="flex items-center p-3 sm:p-4 hover:bg-slate-100 cursor-pointer border-b border-slate-200 transition-colors relative"
+                    >
+                        <img src={chatItem.otherUserPhotoURL || `https://placehold.co/48x48/E0E7FF/4F46E5?text=${chatItem.otherUserName.charAt(0)}`} alt={chatItem.otherUserName} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full mr-3 sm:mr-4 object-cover shadow-sm" />
+                        <div className="flex-grow overflow-hidden" onClick={() => onSelectChat({ 
                             uid: chatItem.otherUserId, 
                             displayName: chatItem.otherUserName, 
                             photoURL: chatItem.otherUserPhotoURL
-                        })}
-                        className="flex items-center p-3 sm:p-4 hover:bg-slate-100 cursor-pointer border-b border-slate-200 transition-colors"
-                    >
-                        <img src={chatItem.otherUserPhotoURL || `https://placehold.co/48x48/E0E7FF/4F46E5?text=${chatItem.otherUserName.charAt(0)}`} alt={chatItem.otherUserName} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full mr-3 sm:mr-4 object-cover shadow-sm" />
-                        <div className="flex-grow overflow-hidden">
+                        })}>
                             <p className="font-semibold text-slate-800 text-md truncate">{chatItem.otherUserName}</p>
                             <p className="text-sm text-slate-500 truncate">{chatItem.lastMessage}</p>
                         </div>
@@ -1222,6 +1272,13 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
                                 {formatTimestamp(chatItem.lastMessageTimestamp)}
                             </p>
                         )}
+                        <button 
+                            onClick={() => handlePinToggle(chatItem)}
+                            className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-slate-200 text-slate-500"
+                            title={chatItem.isPinned ? "Lepas Pin" : "Sematkan Chat"}
+                        >
+                            {chatItem.isPinned ? <PinOff size={18} className="text-indigo-600" /> : <Pin size={18} />}
+                        </button>
                     </div>
                 ))}
             </div>
@@ -1230,12 +1287,12 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
 }
 
 
-function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUserName, otherUserPhotoURL, otherUserId }
+function ChatWindow({ chat, currentUser, onBack }) { 
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [loadingMessages, setLoadingMessages] = useState(true);
     const messagesEndRef = useRef(null);
-    const [otherUserDetails, setOtherUserDetails] = useState(null); // Untuk status online
+    const [otherUserDetails, setOtherUserDetails] = useState(null); 
     const [isRemoteTyping, setIsRemoteTyping] = useState(false);
     const typingTimeoutRef = useRef(null);
 
@@ -1253,7 +1310,7 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
                 if (docSnap.exists()) {
                     setOtherUserDetails(docSnap.data());
                 } else {
-                    setOtherUserDetails(null); // Atau handle user tidak ditemukan
+                    setOtherUserDetails(null); 
                 }
             });
             return () => unsubscribe();
@@ -1282,7 +1339,7 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
                 }
             });
             
-            await Promise.all(updatePromises); // Jalankan semua update readAt
+            await Promise.all(updatePromises); 
             setMessages(msgs);
             setLoadingMessages(false);
         }, (error) => {
@@ -1295,6 +1352,7 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
         const unsubscribeTyping = onSnapshot(chatRoomRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
+                // Pastikan typing status dari user lain, bukan diri sendiri
                 if (data.typing && data.typing[chat.otherUserId]) {
                     setIsRemoteTyping(true);
                 } else {
@@ -1319,8 +1377,6 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
         clearTimeout(typingTimeoutRef.current);
         const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId);
         
-        // Update status mengetik di Firestore
-        // Gunakan dot notation untuk update field nested di map
         updateDoc(chatRoomRef, {
             [`typing.${currentUser.uid}`]: isTyping 
         }).catch(console.error);
@@ -1328,7 +1384,7 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
         if (isTyping) {
             typingTimeoutRef.current = setTimeout(() => {
                 updateDoc(chatRoomRef, { [`typing.${currentUser.uid}`]: false }).catch(console.error);
-            }, 3000); // Berhenti mengetik setelah 3 detik tidak aktif
+            }, 3000); 
         }
     };
 
@@ -1340,9 +1396,9 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
         const messageData = {
             text: newMessage.trim(),
             senderId: currentUser.uid,
-            recipientId: chat.otherUserId, // Penting untuk status terbaca
+            recipientId: chat.otherUserId, 
             timestamp: serverTimestamp(),
-            readAt: null, // Awalnya belum dibaca
+            readAt: null, 
         };
         
         const messagesRef = collection(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages');
@@ -1353,10 +1409,10 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
             await updateDoc(chatRoomRef, {
                 lastMessage: { text: newMessage.trim(), senderId: currentUser.uid, timestamp: serverTimestamp() },
                 updatedAt: serverTimestamp(),
-                [`typing.${currentUser.uid}`]: false // Berhenti mengetik setelah mengirim
+                [`typing.${currentUser.uid}`]: false 
             });
             setNewMessage('');
-            clearTimeout(typingTimeoutRef.current); // Hapus timeout mengetik
+            clearTimeout(typingTimeoutRef.current); 
         } catch (error) {
             console.error("Error sending message:", error);
         }
@@ -1417,8 +1473,10 @@ function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUse
 
 function MessageBubble({ message, isCurrentUser, currentUser }) {
     const timeDisplay = formatTimestamp(message.timestamp);
-    const isRead = message.readAt && message.senderId === currentUser.uid; // Pesan dikirim oleh currentUser dan sudah dibaca penerima
-    const isSent = message.senderId === currentUser.uid && !message.readAt; // Pesan dikirim oleh currentUser tapi belum dibaca penerima
+    // Pesan dikirim oleh currentUser dan sudah dibaca penerima
+    const isRead = message.readAt && message.senderId === currentUser.uid; 
+    // Pesan dikirim oleh currentUser tapi belum dibaca penerima
+    const isSent = message.senderId === currentUser.uid && !message.readAt; 
 
     return (
         <div className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
@@ -1437,6 +1495,178 @@ function MessageBubble({ message, isCurrentUser, currentUser }) {
     );
 }
 
+function AIChatWindow({ chat, currentUser, onBack }) {
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const [loadingMessages, setLoadingMessages] = useState(true);
+    const [isTyping, setIsTyping] = useState(false); // AI typing indicator
+    const messagesEndRef = useRef(null);
+    const AI_BOT_ID = "bgune_ai_bot"; // Consistent ID for the AI
+
+    const scrollToBottom = useCallback(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, []);
+
+    useEffect(scrollToBottom, [messages, scrollToBottom]);
+
+    useEffect(() => {
+        if (!chat || !chat.chatId) return;
+        setLoadingMessages(true);
+
+        const messagesRef = collection(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages');
+        const qMessages = query(messagesRef, orderBy('timestamp', 'asc'));
+
+        const unsubscribeMessages = onSnapshot(qMessages, async (snapshot) => {
+            const msgs = [];
+            snapshot.docs.forEach(docSnap => {
+                const msgData = { id: docSnap.id, ...docSnap.data() };
+                msgs.push(msgData);
+            });
+            setMessages(msgs);
+            setLoadingMessages(false);
+        }, (error) => {
+            console.error("Error fetching AI messages:", error);
+            setLoadingMessages(false);
+        });
+
+        return () => unsubscribeMessages();
+    }, [chat]);
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !currentUser || !chat) return;
+
+        const userMessage = {
+            text: newMessage.trim(),
+            senderId: currentUser.uid,
+            recipientId: AI_BOT_ID,
+            timestamp: serverTimestamp(),
+        };
+
+        const messagesRef = collection(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages');
+        const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId);
+
+        try {
+            // Add user's message to Firestore
+            await addDoc(messagesRef, userMessage);
+            await setDoc(chatRoomRef, {
+                members: [currentUser.uid, AI_BOT_ID],
+                lastMessage: { text: newMessage.trim(), senderId: currentUser.uid, timestamp: serverTimestamp() },
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+
+            setNewMessage('');
+            setIsTyping(true); // Show AI typing indicator
+
+            // Call AI API
+            const prompt = newMessage.trim();
+            let chatHistory = messages.map(msg => ({
+                role: msg.senderId === currentUser.uid ? "user" : "model",
+                parts: [{ text: msg.text }]
+            }));
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+
+            const payload = { contents: chatHistory };
+            const apiKey = ""; // Canvas will provide this
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            let aiResponseText = "Maaf, saya tidak dapat memproses permintaan Anda saat ini.";
+
+            if (result.candidates && result.candidates.length > 0 &&
+                result.candidates[0].content && result.candidates[0].content.parts &&
+                result.candidates[0].content.parts.length > 0) {
+                aiResponseText = result.candidates[0].content.parts[0].text;
+            }
+
+            const aiMessage = {
+                text: aiResponseText,
+                senderId: AI_BOT_ID,
+                recipientId: currentUser.uid,
+                timestamp: serverTimestamp(),
+            };
+
+            // Add AI's response to Firestore
+            await addDoc(messagesRef, aiMessage);
+            await updateDoc(chatRoomRef, {
+                lastMessage: { text: aiResponseText, senderId: AI_BOT_ID, timestamp: serverTimestamp() },
+                updatedAt: serverTimestamp(),
+            });
+
+        } catch (error) {
+            console.error("Error communicating with AI or sending message:", error);
+            // Optionally send an error message from AI to user
+            const errorMessage = {
+                text: "Terjadi kesalahan saat menghubungi AI. Silakan coba lagi.",
+                senderId: AI_BOT_ID,
+                recipientId: currentUser.uid,
+                timestamp: serverTimestamp(),
+            };
+            await addDoc(messagesRef, errorMessage);
+            await updateDoc(chatRoomRef, {
+                lastMessage: { text: errorMessage.text, senderId: AI_BOT_ID, timestamp: serverTimestamp() },
+                updatedAt: serverTimestamp(),
+            });
+        } finally {
+            setIsTyping(false); // Hide AI typing indicator
+        }
+    };
+
+    if (!chat) return null;
+
+    return (
+        <div className="flex flex-col h-full bg-slate-100">
+            <div className="flex items-center p-3 sm:p-4 bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
+                <button onClick={onBack} className="mr-3 text-indigo-600 hover:text-indigo-800 p-1.5 rounded-full hover:bg-slate-100 transition">
+                    <ArrowLeft size={22} />
+                </button>
+                <img src={chat.otherUserPhotoURL} alt={chat.otherUserName} className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" />
+                <div>
+                    <h2 className="font-semibold text-slate-800 text-lg">{chat.otherUserName}</h2>
+                    <p className="text-xs text-slate-500">{isTyping ? "AI sedang mengetik..." : "Online"}</p>
+                </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-4 space-y-3">
+                {loadingMessages && <p className="text-center text-slate-500 py-4">Memuat pesan AI...</p>}
+                {!loadingMessages && messages.length === 0 && (
+                    <p className="text-center text-slate-500 py-4">Mulai percakapan dengan AI!</p>
+                )}
+                {messages.map(msg => (
+                    <MessageBubble 
+                        key={msg.id} 
+                        message={msg} 
+                        isCurrentUser={msg.senderId === currentUser.uid} 
+                        currentUser={currentUser} 
+                    />
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+
+            <div className="p-3 sm:p-4 bg-white border-t border-slate-200 sticky bottom-0">
+                <form onSubmit={handleSendMessage} className="flex items-center space-x-2 sm:space-x-3">
+                    <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="Ketik pesan Anda untuk AI..."
+                        className="flex-grow p-3 border border-slate-300 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base"
+                        disabled={isTyping}
+                    />
+                    <button type="submit" className="bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-700 transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" disabled={!newMessage.trim() || isTyping}>
+                        <Send size={20} />
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
 
 function FindFriendsPage({ currentUser, onStartChat, onBack }) {
     const [users, setUsers] = useState([]);
@@ -1446,7 +1676,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
 
     useEffect(() => {
         const usersRef = collection(db, getCollectionPath('profiles', true));
-        const q = query(usersRef, where('uid', '!=', currentUser.uid)); // Jangan tampilkan diri sendiri
+        const q = query(usersRef, where('uid', '!=', currentUser.uid)); 
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -1479,10 +1709,11 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     lastMessage: null,
-                    typing: {} // Inisialisasi field typing
+                    typing: {}, 
+                    pinnedBy: [], // Inisialisasi pinnedBy
                 });
             }
-            onStartChat(otherUser); // otherUser adalah objek { uid, displayName, photoURL }
+            onStartChat(otherUser); 
         } catch (err) {
             console.error("Error creating/checking chat room:", err);
             setError("Gagal memulai chat. Coba lagi.");
@@ -1520,7 +1751,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
                  {!loading && users.length === 0 && !searchTerm && (
                     <p className="text-center text-slate-500 py-4">Belum ada pengguna lain di platform ini.</p>
                 )}
-                {filteredUsers.map(userItem => ( // Ganti nama variabel
+                {filteredUsers.map(userItem => ( 
                     <div key={userItem.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200">
                         <div className="flex items-center overflow-hidden">
                             <img src={userItem.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${userItem.displayName.charAt(0)}`} alt={userItem.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
@@ -1611,12 +1842,12 @@ function ProfilePage({ currentUser, onLogout }) {
     const [error, setError] = useState('');
     const [userPosts, setUserPosts] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(true);
-    const [internalCurrentUser, setInternalCurrentUser] = useState(currentUser); // State lokal untuk update UI instan
+    const [internalCurrentUser, setInternalCurrentUser] = useState(currentUser); 
 
     useEffect(() => {
-        setInternalCurrentUser(currentUser); // Sinkronkan dengan prop jika berubah
+        setInternalCurrentUser(currentUser); 
         setDisplayName(currentUser.displayName);
-        setBio(currentUser.bio || ''); // Pastikan bio tidak undefined
+        setBio(currentUser.bio || ''); 
         setPhotoPreview(currentUser.photoURL);
     }, [currentUser]);
 
@@ -1663,7 +1894,8 @@ function ProfilePage({ currentUser, onLogout }) {
             }
             setPhotoFile(file);
             setPhotoPreview(URL.createObjectURL(file));
-            e.target.value = null;
+            // Reset input file agar event onChange terpicu lagi jika file yang sama dipilih
+            e.target.value = null; 
         }
     };
     
@@ -1677,20 +1909,14 @@ function ProfilePage({ currentUser, onLogout }) {
         let newPhotoURL = internalCurrentUser.photoURL;
 
         if (photoFile) {
-            // Hapus foto lama jika ada dan berbeda (opsional, tergantung kebutuhan)
-            // if (internalCurrentUser.photoURL && internalCurrentUser.photoURL.includes('firebasestorage')) {
-            //     try {
-            //         const oldPhotoRef = ref(storage, internalCurrentUser.photoURL);
-            //         await deleteObject(oldPhotoRef);
-            //     } catch (e) { console.warn("Gagal hapus foto profil lama:", e); }
-            // }
             const photoRef = ref(storage, `profile_photos/${internalCurrentUser.uid}/${Date.now()}_${photoFile.name}`);
             try {
                 const snapshot = await uploadBytes(photoRef, photoFile);
                 newPhotoURL = await getDownloadURL(snapshot.ref);
             } catch (uploadError) {
-                console.error("Error uploading new photo:", uploadError);
-                setError("Gagal mengunggah foto baru. Coba lagi.");
+                // Penanganan kesalahan lebih detail
+                console.error("Error uploading new photo for ProfilePage:", uploadError);
+                setError(`Gagal mengunggah foto baru: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
                 setIsSaving(false);
                 return;
             }
@@ -1705,7 +1931,7 @@ function ProfilePage({ currentUser, onLogout }) {
         };
         try {
             await updateDoc(userDocRef, updatedProfileData);
-            setInternalCurrentUser(prev => ({...prev, ...updatedProfileData})); // Update state lokal untuk UI
+            setInternalCurrentUser(prev => ({...prev, ...updatedProfileData})); 
             setIsEditing(false);
         } catch (saveError) {
             console.error("Error updating profile:", saveError);
@@ -1716,8 +1942,6 @@ function ProfilePage({ currentUser, onLogout }) {
     };
 
     const handlePostChange = () => {
-        // onSnapshot pada userPosts akan menangani pembaruan daftar postingan.
-        // Bisa digunakan untuk logging atau UI feedback tambahan jika perlu.
         console.log("A post by the user was edited or deleted.");
     };
 
