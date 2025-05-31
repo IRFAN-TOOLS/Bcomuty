@@ -670,7 +670,7 @@ function CreatePostModal({ currentUser, onClose }) {
     const getYoutubeEmbedUrl = (url) => {
         if (!isValidYoutubeUrl(url)) return null;
         const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        return videoIdMatch ? `http://www.youtube.com/embed/${videoIdMatch[0]}` : null;
     };
 
 
@@ -686,7 +686,7 @@ function CreatePostModal({ currentUser, onClose }) {
         if (videoUrl.trim()) {
             finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
             if (!finalVideoUrl) {
-                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=VIDEO_ID");
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
                 setIsPosting(false); 
                 return;
             }
@@ -774,7 +774,7 @@ function CreatePostModal({ currentUser, onClose }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=VIDEO_ID"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                         </div>
@@ -795,7 +795,7 @@ function CreatePostModal({ currentUser, onClose }) {
 function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const [text, setText] = useState(post.text);
     const [imageFile, setImageFile] = useState(null);
-    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? (post.videoUrl.includes("youtube.com/embed/") ? `https://www.youtube.com/watch?v=${post.videoUrl.split('/').pop()}` : post.videoUrl) : ''); 
+    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? (post.videoUrl.includes("http://www.youtube.com/embed/") ? `https://www.youtube.com/watch?v=${post.videoUrl.split('/').pop()}` : post.videoUrl) : ''); 
     const [imagePreview, setImagePreview] = useState(post.imageUrl || null);
     const [isUpdating, setIsUpdating] = useState(false);
     const [error, setError] = useState('');
@@ -827,7 +827,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const getYoutubeEmbedUrl = (url) => {
         if (!isValidYoutubeUrl(url)) return null;
         const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        return videoIdMatch ? `http://www.youtube.com/embed/${videoIdMatch[0]}` : null;
     };
 
     const handleSubmit = async (e) => {
@@ -842,7 +842,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
         if (videoUrl.trim()) {
             finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
             if (!finalVideoUrl) {
-                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=VIDEO_ID");
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
                 setIsUpdating(false);
                 return;
             }
@@ -950,7 +950,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=VIDEO_ID"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                         </div>
@@ -1484,29 +1484,25 @@ function ChatWindow({ chat, currentUser, onBack }) {
         const messagesRef = collection(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages');
         const qMessages = query(messagesRef, orderBy('timestamp', 'asc'));
         const unsubscribeMessages = onSnapshot(qMessages, async (snapshot) => {
-            const msgs = [];
-            const updatePromises = [];
-
-            snapshot.docChanges().forEach((change) => { // More granular updates
-                if (change.type === "added") {
-                    const msgData = { id: change.doc.id, ...change.doc.data() };
-                    msgs.push(msgData);
-                    if (msgData.recipientId === currentUser.uid && !msgData.readAt) {
-                        const msgRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages', change.doc.id);
-                        updatePromises.push(updateDoc(msgRef, { readAt: serverTimestamp() }));
-                    }
-                }
-            });
-            
-            if (updatePromises.length > 0) {
-                await Promise.all(updatePromises); 
-            }
-            
-            // Instead of replacing, merge new messages with existing ones if snapshot.docChanges is used
-            // For simplicity with current structure, we re-fetch all on snapshot.
-            const allMsgs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-            setMessages(allMsgs);
+            const newMessages = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+            setMessages(newMessages);
             setLoadingMessages(false);
+
+            // Perbarui status 'readAt' untuk pesan yang belum dibaca dan dikirim oleh pengguna lain
+            const unreadMessagesPromises = newMessages
+                .filter(msg => msg.recipientId === currentUser.uid && !msg.readAt)
+                .map(msg => {
+                    const msgRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages', msg.id);
+                    return updateDoc(msgRef, { readAt: serverTimestamp() });
+                });
+            
+            if (unreadMessagesPromises.length > 0) {
+                try {
+                    await Promise.all(unreadMessagesPromises);
+                } catch (e) {
+                    console.error("Error updating read status for messages:", e);
+                }
+            }
 
             // Reset unread count for current user in this chat
             if (currentUser?.uid && chat?.chatId) {
@@ -1693,10 +1689,9 @@ function ChatWindow({ chat, currentUser, onBack }) {
     );
 }
 
-function MessageBubble({ message, isCurrentUser, currentUserPhotoURL, otherUserPhotoURL, onDeleteRequest }) {
+const MessageBubble = React.memo(({ message, isCurrentUser, currentUserPhotoURL, otherUserPhotoURL, onDeleteRequest }) => {
     const timeDisplay = formatTimestamp(message.timestamp);
     const isRead = message.readAt && isCurrentUser; 
-    const isSent = isCurrentUser && !message.readAt; 
 
     const [showOptions, setShowOptions] = useState(false);
 
@@ -1742,7 +1737,7 @@ function MessageBubble({ message, isCurrentUser, currentUserPhotoURL, otherUserP
             )}
         </div>
     );
-}
+});
 
 function AIChatWindow({ chat, currentUser, onBack }) {
     const [messages, setMessages] = useState([]);
