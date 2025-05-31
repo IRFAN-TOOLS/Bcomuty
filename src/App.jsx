@@ -33,7 +33,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 
 // Import icons from lucide-react
 import { 
-    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2, Check, CheckCheck, Pin, PinOff
+    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2, Check, CheckCheck, Pin, PinOff, UserPlus, UserMinus, Share2
 } from 'lucide-react';
 
 // Firebase Configuration
@@ -66,8 +66,9 @@ const getCollectionPath = (collectionName, isPublic = false) => {
     if (isPublic) {
         return `/artifacts/${appId}/public/data/${collectionName}`;
     }
+    // Fallback to public if userId is not available for private collections
     if (!userId) {
-        console.warn("User not authenticated for private collection access.");
+        console.warn(`User not authenticated for private collection access to ${collectionName}. Falling back to public.`);
         return `/artifacts/${appId}/public/data/${collectionName}`; 
     }
     return `/artifacts/${appId}/users/${userId}/data/${collectionName}`;
@@ -96,6 +97,56 @@ const formatTimestamp = (timestamp, formatOptions = { hour: '2-digit', minute: '
     return new Timestamp(timestamp.seconds, timestamp.nanoseconds).toDate().toLocaleTimeString('id-ID', formatOptions);
 };
 
+// --- Notification Helper ---
+const sendNotification = async (recipientId, type, senderId, postId = null, commentId = null) => {
+    if (recipientId === senderId) return; // Jangan notifikasi diri sendiri
+
+    const notificationsRef = collection(db, getCollectionPath('notifications', true)); // Notifikasi bersifat publik untuk kesederhanaan
+    
+    let message = "";
+    let link = "";
+
+    switch (type) {
+        case 'follow':
+            const senderProfile = await getDoc(doc(db, getCollectionPath('profiles', true), senderId));
+            const senderName = senderProfile.exists() ? senderProfile.data().displayName : 'Seseorang';
+            message = `${senderName} mulai mengikuti Anda.`;
+            link = `/profile/${senderId}`; // Tautan ke profil pengirim
+            break;
+        case 'like':
+            const likerProfile = await getDoc(doc(db, getCollectionPath('profiles', true), senderId));
+            const likerName = likerProfile.exists() ? likerProfile.data().displayName : 'Seseorang';
+            message = `${likerName} menyukai postingan Anda.`;
+            link = `/post/${postId}`; // Tautan ke postingan
+            break;
+        case 'comment':
+            const commenterProfile = await getDoc(doc(db, getCollectionPath('profiles', true), senderId));
+            const commenterName = commenterProfile.exists() ? commenterProfile.data().displayName : 'Seseorang';
+            message = `${commenterName} mengomentari postingan Anda.`;
+            link = `/post/${postId}`; // Tautan ke postingan
+            break;
+        default:
+            message = "Ada pembaruan baru untuk Anda.";
+            link = "/updates";
+    }
+
+    try {
+        await addDoc(notificationsRef, {
+            recipientId: recipientId,
+            senderId: senderId,
+            type: type,
+            message: message,
+            link: link,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            postId: postId,
+            commentId: commentId
+        });
+    } catch (error) {
+        console.error("Error sending notification:", error);
+    }
+};
+
 
 // --- Komponen Utama ---
 function App() {
@@ -105,6 +156,7 @@ function App() {
     const [currentView, setCurrentView] = useState('feed'); 
     const [selectedChat, setSelectedChat] = useState(null); // { chatId, otherUserName, otherUserPhotoURL, otherUserId, isAI }
     const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+    const [viewingOtherProfile, setViewingOtherProfile] = useState(null); // Stores UID of other user if viewing their profile
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -139,7 +191,9 @@ function App() {
                                 photoURL: firebaseUser.photoURL || `https://placehold.co/100x100/E0E7FF/4F46E5?text=${(firebaseUser.displayName || 'P').charAt(0)}`,
                                 createdAt: serverTimestamp(),
                                 isOnline: true,
-                                lastActive: serverTimestamp()
+                                lastActive: serverTimestamp(),
+                                followersCount: 0,
+                                followingCount: 0
                             }, { merge: true });
                         } catch (error) {
                             console.error("Error creating basic user profile:", error);
@@ -211,6 +265,7 @@ function App() {
         }
         try {
             setSelectedChat(null);
+            setViewingOtherProfile(null);
             await signOut(auth);
             // User state will be set to null by onAuthStateChanged
         } catch (error) {
@@ -239,6 +294,7 @@ function App() {
             isAI: false, // Ini adalah chat dengan pengguna lain
         });
         setCurrentView('chat');
+        setViewingOtherProfile(null); // Tutup tampilan profil lain jika terbuka
     };
 
     const openAIChat = () => {
@@ -250,6 +306,13 @@ function App() {
             isAI: true,
         });
         setCurrentView('chat');
+        setViewingOtherProfile(null); // Tutup tampilan profil lain jika terbuka
+    };
+
+    const viewProfile = (uid) => {
+        setViewingOtherProfile(uid);
+        setCurrentView('profile');
+        setSelectedChat(null); // Tutup chat jika terbuka
     };
 
     if (loadingAuth) {
@@ -273,12 +336,16 @@ function App() {
             }
         }
         switch (currentView) {
-            case 'feed': return <Feed currentUser={user} />;
+            case 'feed': return <Feed currentUser={user} onViewProfile={viewProfile} />;
             case 'chatList': return <ChatList currentUser={user} onSelectChat={openChatWithUser} onFindFriends={() => setCurrentView('findFriends')} onOpenAIChat={openAIChat} />;
-            case 'updates': return <UpdatesPage />;
-            case 'profile': return <ProfilePage currentUser={user} onLogout={handleLogout} />;
-            case 'findFriends': return <FindFriendsPage currentUser={user} onStartChat={openChatWithUser} onBack={() => setCurrentView('chatList')} />;
-            default: return <Feed currentUser={user} />;
+            case 'updates': return <NotificationsPage currentUser={user} onViewProfile={viewProfile} />;
+            case 'profile': 
+                if (viewingOtherProfile && viewingOtherProfile !== user.uid) {
+                    return <OtherProfilePage currentUser={user} otherUserId={viewingOtherProfile} onBack={() => setViewingOtherProfile(null)} onStartChat={openChatWithUser} />;
+                }
+                return <ProfilePage currentUser={user} onLogout={handleLogout} onViewProfile={viewProfile} />;
+            case 'findFriends': return <FindFriendsPage currentUser={user} onStartChat={openChatWithUser} onBack={() => setCurrentView('chatList')} onViewProfile={viewProfile} />;
+            default: return <Feed currentUser={user} onViewProfile={viewProfile} />;
         }
     };
 
@@ -295,10 +362,10 @@ function App() {
                 />
             )}
 
-            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-40">
                 <div className="flex justify-around items-center max-w-md mx-auto h-16">
-                    <NavItem icon={<Home />} label="Beranda" active={currentView === 'feed'} onClick={() => {setCurrentView('feed'); setSelectedChat(null);}} />
-                    <NavItem icon={<MessageSquare />} label="Pesan" active={['chatList', 'chat', 'findFriends'].includes(currentView)} onClick={() => {setCurrentView('chatList'); setSelectedChat(null);}} />
+                    <NavItem icon={<Home />} label="Beranda" active={currentView === 'feed'} onClick={() => {setCurrentView('feed'); setSelectedChat(null); setViewingOtherProfile(null);}} />
+                    <NavItem icon={<MessageSquare />} label="Pesan" active={['chatList', 'chat', 'findFriends'].includes(currentView)} onClick={() => {setCurrentView('chatList'); setSelectedChat(null); setViewingOtherProfile(null);}} />
                     <button 
                         onClick={() => setShowCreatePostModal(true)}
                         className="absolute left-1/2 top-0 transform -translate-x-1/2 -translate-y-[calc(50%-8px)] bg-indigo-600 text-white rounded-full p-3.5 shadow-xl hover:bg-indigo-700 transition duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50"
@@ -306,8 +373,8 @@ function App() {
                     >
                         <PlusCircle size={26} />
                     </button>
-                    <NavItem icon={<Bell />} label="Info" active={currentView === 'updates'} onClick={() => {setCurrentView('updates'); setSelectedChat(null);}} />
-                    <NavItem icon={<UserCircle />} label="Profil" active={currentView === 'profile'} onClick={() => {setCurrentView('profile'); setSelectedChat(null);}} />
+                    <NavItem icon={<Bell />} label="Notifikasi" active={currentView === 'updates'} onClick={() => {setCurrentView('updates'); setSelectedChat(null); setViewingOtherProfile(null);}} />
+                    <NavItem icon={<UserCircle />} label="Profil" active={currentView === 'profile' && !viewingOtherProfile} onClick={() => {setCurrentView('profile'); setSelectedChat(null); setViewingOtherProfile(null);}} />
                 </div>
             </nav>
         </div>
@@ -318,9 +385,9 @@ function App() {
 
 function LoginScreen({ onLogin }) {
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-4">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 p-4">
             <div className="bg-white p-8 sm:p-10 rounded-xl shadow-2xl text-center max-w-md w-full">
-                <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-600 mb-4">Bgune</h1>
+                <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-4">Bgune Community</h1>
                 <p className="text-slate-600 mb-8 text-lg">Komunitas untuk berbagi & terhubung.</p>
                 <button
                     onClick={onLogin}
@@ -396,7 +463,9 @@ function ProfileSetup({ user, onProfileComplete }) {
             createdAt: user.createdAt || serverTimestamp(), 
             updatedAt: serverTimestamp(),
             isOnline: true, 
-            lastActive: serverTimestamp()
+            lastActive: serverTimestamp(),
+            followersCount: 0, // Initialize
+            followingCount: 0  // Initialize
         };
 
         try {
@@ -418,9 +487,9 @@ function ProfileSetup({ user, onProfileComplete }) {
                 {error && <p className="mb-4 text-sm text-red-600 bg-red-100 p-3 rounded-md text-center">{error}</p>}
 
                 <div className="mb-6 text-center">
-                    <img src={photoPreview} alt="Profile Preview" className="w-36 h-36 rounded-full mx-auto object-cover border-4 border-indigo-300 shadow-md" />
+                    <img src={photoPreview} alt="Profile Preview" className="w-36 h-36 rounded-full mx-auto object-cover border-4 border-blue-300 shadow-md" />
                     <input type="file" id="photoUpload" onChange={handlePhotoChange} accept="image/jpeg, image/png" className="hidden" />
-                    <label htmlFor="photoUpload" className="mt-3 inline-block bg-indigo-500 hover:bg-indigo-600 text-white text-sm py-2.5 px-5 rounded-lg cursor-pointer transition duration-150 shadow hover:shadow-md">
+                    <label htmlFor="photoUpload" className="mt-3 inline-block bg-blue-500 hover:bg-blue-600 text-white text-sm py-2.5 px-5 rounded-lg cursor-pointer transition duration-150 shadow hover:shadow-md">
                         Ganti Foto
                     </label>
                 </div>
@@ -432,7 +501,7 @@ function ProfileSetup({ user, onProfileComplete }) {
                         id="displayName"
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                         required
                     />
                 </div>
@@ -443,7 +512,7 @@ function ProfileSetup({ user, onProfileComplete }) {
                         value={bio}
                         onChange={(e) => setBio(e.target.value)}
                         rows="4"
-                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition resize-none"
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition resize-none"
                         placeholder="Ceritakan sedikit tentang diri Anda (maks. 150 karakter)"
                         maxLength="150"
                         required
@@ -452,7 +521,7 @@ function ProfileSetup({ user, onProfileComplete }) {
                 <button
                     type="submit"
                     disabled={isSaving}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed text-lg"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed text-lg"
                 >
                     {isSaving ? 'Menyimpan...' : 'Simpan & Lanjutkan'}
                 </button>
@@ -467,7 +536,7 @@ function NavItem({ icon, label, active, onClick }) {
         <button
             onClick={onClick}
             className={`flex flex-col items-center justify-center w-1/4 py-2 rounded-md transition-colors duration-200 ease-in-out focus:outline-none
-                        ${active ? 'text-indigo-600' : 'text-slate-500 hover:text-indigo-500'}`}
+                        ${active ? 'text-blue-600' : 'text-slate-500 hover:text-blue-500'}`}
         >
             {React.cloneElement(icon, { size: active ? 26 : 24, strokeWidth: active ? 2.5 : 2 })}
             <span className={`text-xs mt-1 ${active ? 'font-semibold' : 'font-normal'}`}>{label}</span>
@@ -475,9 +544,11 @@ function NavItem({ icon, label, active, onClick }) {
     );
 }
 
-function Feed({ currentUser }) {
+function Feed({ currentUser, onViewProfile }) {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filteredPosts, setFilteredPosts] = useState([]);
 
     useEffect(() => {
         const postsCollectionRef = collection(db, getCollectionPath('posts', true));
@@ -506,7 +577,21 @@ function Feed({ currentUser }) {
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        const lowercasedSearchTerm = searchTerm.toLowerCase().trim();
+        if (lowercasedSearchTerm === '') {
+            setFilteredPosts(posts);
+        } else {
+            const filtered = posts.filter(post =>
+                (post.text && post.text.toLowerCase().includes(lowercasedSearchTerm)) ||
+                (post.author && post.author.displayName && post.author.displayName.toLowerCase().includes(lowercasedSearchTerm))
+            );
+            setFilteredPosts(filtered);
+        }
+    }, [searchTerm, posts]);
+
     const handlePostUpdate = () => {
+        // This function can trigger a re-fetch or re-render if needed
         console.log("Post list potentially updated.");
     };
 
@@ -517,14 +602,32 @@ function Feed({ currentUser }) {
 
     return (
         <div className="py-4 md:py-6 space-y-4 md:space-y-6">
-            {posts.length === 0 && <p className="text-center text-slate-500 mt-10 text-lg">Belum ada postingan. <br/> Jadilah yang pertama berbagi!</p>}
-            {posts.map(post => (
+            <div className="px-4 sm:px-6 mb-4">
+                <div className="relative">
+                    <input
+                        type="text"
+                        placeholder="Cari postingan atau pengguna..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full p-3 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base shadow-sm"
+                    />
+                    <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                </div>
+            </div>
+
+            {filteredPosts.length === 0 && !loading && (
+                <p className="text-center text-slate-500 mt-10 text-lg">
+                    {searchTerm ? `Tidak ada postingan ditemukan untuk "${searchTerm}".` : "Belum ada postingan. Jadilah yang pertama berbagi!"}
+                </p>
+            )}
+            {filteredPosts.map(post => (
                 <PostCard 
                     key={post.id} 
                     post={post} 
                     currentUser={currentUser} 
                     onPostEdited={handlePostUpdate} 
                     onPostDeleted={handlePostUpdate} 
+                    onViewProfile={onViewProfile}
                 />
             ))}
         </div>
@@ -643,12 +746,12 @@ function CreatePostModal({ currentUser, onClose }) {
                             value={text}
                             onChange={(e) => setText(e.target.value)}
                             placeholder="Apa yang Anda pikirkan hari ini?"
-                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none text-base"
+                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-base"
                             rows="5"
                         />
                     </div>
                     <div className="space-y-3">
-                        <button type="button" onClick={() => imageInputRef.current.click()} className="w-full flex items-center justify-center space-x-2 text-indigo-600 hover:text-indigo-800 py-2.5 px-3 bg-indigo-50 rounded-lg border-2 border-dashed border-indigo-300 hover:border-indigo-500 transition">
+                        <button type="button" onClick={() => imageInputRef.current.click()} className="w-full flex items-center justify-center space-x-2 text-blue-600 hover:text-blue-800 py-2.5 px-3 bg-blue-50 rounded-lg border-2 border-dashed border-blue-300 hover:border-blue-500 transition">
                             <ImageIcon size={22} /> 
                             <span className="font-medium">Tambah Gambar</span>
                         </button>
@@ -672,14 +775,14 @@ function CreatePostModal({ currentUser, onClose }) {
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
                                 placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                         </div>
                     </div>
                     <button
                         type="submit"
                         disabled={isPosting}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 text-lg"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 text-lg"
                     >
                         {isPosting ? 'Memposting...' : 'Posting Sekarang'}
                     </button>
@@ -754,8 +857,8 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
 
         // Handle image update/removal
         if (imageFile) { 
-            // Jika ada gambar lama dan path-nya berbeda (artinya diganti dengan gambar baru), hapus gambar lama
-            if (post.imageStoragePath && post.imageStoragePath !== imageStoragePathToStore) {
+            // Jika ada gambar lama, hapus gambar lama
+            if (post.imageStoragePath) { 
                 try {
                     const oldImageRef = ref(storage, post.imageStoragePath);
                     await deleteObject(oldImageRef);
@@ -825,12 +928,12 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                             value={text}
                             onChange={(e) => setText(e.target.value)}
                             placeholder="Apa yang Anda pikirkan hari ini?"
-                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none text-base"
+                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-base"
                             rows="5"
                         />
                     </div>
                     <div className="space-y-3">
-                        <button type="button" onClick={() => imageInputRef.current.click()} className="w-full flex items-center justify-center space-x-2 text-indigo-600 hover:text-indigo-800 py-2.5 px-3 bg-indigo-50 rounded-lg border-2 border-dashed border-indigo-300 hover:border-indigo-500 transition">
+                        <button type="button" onClick={() => imageInputRef.current.click()} className="w-full flex items-center justify-center space-x-2 text-blue-600 hover:text-blue-800 py-2.5 px-3 bg-blue-50 rounded-lg border-2 border-dashed border-blue-300 hover:border-blue-500 transition">
                             <ImageIcon size={22} /> 
                             <span className="font-medium">Ubah Gambar</span>
                         </button>
@@ -854,14 +957,14 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
                                 placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                         </div>
                     </div>
                     <button
                         type="submit"
                         disabled={isUpdating}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 text-lg"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 text-lg"
                     >
                         {isUpdating ? 'Memperbarui...' : 'Perbarui Postingan'}
                     </button>
@@ -901,7 +1004,7 @@ function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel, isDeleting }
 }
 
 
-function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
+function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfile }) {
     const [liked, setLiked] = useState(post.likes?.includes(currentUser.uid) || false);
     const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
     const [currentCommentsCount, setCurrentCommentsCount] = useState(post.commentsCount || 0); 
@@ -913,6 +1016,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeletingPost, setIsDeletingPost] = useState(false);
+    const [showShareMessage, setShowShareMessage] = useState(false); // State untuk pesan "Link disalin!"
 
     const isMyPost = post.userId === currentUser.uid;
 
@@ -934,6 +1038,10 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                 await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
             } else {
                 await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
+                // Kirim notifikasi ke penulis postingan jika bukan menyukai postingan sendiri
+                if (post.userId !== currentUser.uid) {
+                    sendNotification(post.userId, 'like', currentUser.uid, post.id);
+                }
             }
             setLiked(!liked);
             setLikesCount(prev => liked ? prev -1 : prev + 1);
@@ -996,6 +1104,12 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
             const postRef = doc(db, getCollectionPath('posts', true), post.id);
             await updateDoc(postRef, { commentsCount: increment(1) }); 
             setNewComment('');
+
+            // Kirim notifikasi ke penulis postingan jika bukan mengomentari postingan sendiri
+            if (post.userId !== currentUser.uid) {
+                sendNotification(post.userId, 'comment', currentUser.uid, post.id);
+            }
+
         } catch (error) {
             console.error("handleAddComment: Error adding comment:", error);
         }
@@ -1007,10 +1121,18 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
         setIsDeletingPost(true);
 
         try {
+            // Hapus gambar dari storage jika ada
             if (post.imageStoragePath) { 
                 const imageRef = ref(storage, post.imageStoragePath);
                 await deleteObject(imageRef);
             }
+            // Hapus subkoleksi komentar (Firestore tidak otomatis menghapus subkoleksi)
+            const commentsCollectionRef = collection(db, getCollectionPath('posts', true), post.id, 'comments');
+            const commentsSnapshot = await getDocs(commentsCollectionRef);
+            const deleteCommentPromises = commentsSnapshot.docs.map(commentDoc => deleteDoc(commentDoc.ref));
+            await Promise.all(deleteCommentPromises);
+
+            // Hapus dokumen postingan
             await deleteDoc(doc(db, getCollectionPath('posts', true), post.id));
             if (onPostDeleted) onPostDeleted(post.id); 
         } catch (error) {
@@ -1020,14 +1142,43 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
         }
     };
 
+    const handleSharePost = () => {
+        let shareContent = `Lihat postingan ini di Bgune Community!\n\n${post.text || ''}`;
+        if (post.imageUrl) {
+            shareContent += `\n\nGambar: ${post.imageUrl}`;
+        }
+        if (post.videoUrl) {
+            shareContent += `\n\nVideo: ${post.videoUrl}`;
+        }
+        // Fallback for copying to clipboard
+        const tempTextArea = document.createElement('textarea');
+        tempTextArea.value = shareContent;
+        document.body.appendChild(tempTextArea);
+        tempTextArea.select();
+        try {
+            document.execCommand('copy');
+            setShowShareMessage(true);
+            setTimeout(() => setShowShareMessage(false), 3000); // Sembunyikan pesan setelah 3 detik
+        } catch (err) {
+            console.error('Gagal menyalin ke clipboard:', err);
+            // Optionally, show a fallback message to the user
+        }
+        document.body.removeChild(tempTextArea);
+    };
+
     return (
         <div className="bg-white shadow-lg rounded-xl overflow-hidden mx-2 sm:mx-auto max-w-xl border border-slate-200">
             <div className="p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center">
-                        <img src={post.author?.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${(post.author?.displayName || 'U').charAt(0)}`} alt={post.author?.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
+                        <img 
+                            src={post.author?.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${(post.author?.displayName || 'U').charAt(0)}`} 
+                            alt={post.author?.displayName} 
+                            className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm cursor-pointer" 
+                            onClick={() => onViewProfile(post.userId)}
+                        />
                         <div>
-                            <p className="font-semibold text-slate-800 text-md">{post.author?.displayName || 'Pengguna Bgune'}</p>
+                            <p className="font-semibold text-slate-800 text-md cursor-pointer hover:text-blue-600" onClick={() => onViewProfile(post.userId)}>{post.author?.displayName || 'Pengguna Bgune'}</p>
                             <p className="text-xs text-slate-500">{timeAgo(post.createdAt)}</p>
                         </div>
                     </div>
@@ -1083,7 +1234,16 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                         <CommentIcon size={20} />
                         <span className="text-sm font-medium">{currentCommentsCount} Komentar</span>
                     </button>
+                    <button onClick={handleSharePost} className="flex items-center space-x-1.5 p-2 rounded-lg hover:bg-slate-100 transition-colors hover:text-slate-800">
+                        <Share2 size={20} />
+                        <span className="text-sm font-medium">Bagikan</span>
+                    </button>
                 </div>
+                {showShareMessage && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-green-500 text-white text-sm px-4 py-2 rounded-full shadow-lg transition-all duration-300 ease-out z-30">
+                        Link postingan disalin!
+                    </div>
+                )}
             </div>
             {showComments && (
                 <div className="px-4 py-4 border-t border-slate-200 bg-slate-50">
@@ -1094,9 +1254,9 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                             value={newComment} 
                             onChange={(e) => setNewComment(e.target.value)}
                             placeholder="Tulis komentar Anda..."
-                            className="flex-grow p-2.5 border border-slate-300 rounded-full focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm outline-none"
+                            className="flex-grow p-2.5 border border-slate-300 rounded-full focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm outline-none"
                         />
-                        <button type="submit" className="p-2.5 text-indigo-600 hover:text-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed" disabled={!newComment.trim()}>
+                        <button type="submit" className="p-2.5 text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed" disabled={!newComment.trim()}>
                             <Send size={20} />
                         </button>
                     </form>
@@ -1104,9 +1264,14 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
                     <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                         {comments.map(comment => (
                             <div key={comment.id} className="flex items-start space-x-2.5">
-                                <img src={comment.author?.photoURL || `https://placehold.co/32x32/CBD5E1/475569?text=A`} alt={comment.author?.displayName} className="w-9 h-9 rounded-full object-cover shadow-sm"/>
+                                <img 
+                                    src={comment.author?.photoURL || `https://placehold.co/32x32/CBD5E1/475569?text=A`} 
+                                    alt={comment.author?.displayName} 
+                                    className="w-9 h-9 rounded-full object-cover shadow-sm cursor-pointer"
+                                    onClick={() => onViewProfile(comment.userId)}
+                                />
                                 <div className="bg-slate-100 p-2.5 rounded-lg flex-grow shadow-sm">
-                                    <p className="font-semibold text-sm text-slate-800">{comment.author?.displayName}</p>
+                                    <p className="font-semibold text-sm text-slate-800 cursor-pointer hover:text-blue-600" onClick={() => onViewProfile(comment.userId)}>{comment.author?.displayName}</p>
                                     <p className="text-sm text-slate-700 mt-0.5 whitespace-pre-wrap">{comment.text}</p>
                                     <p className="text-xs text-slate-400 mt-1 text-right">{timeAgo(comment.createdAt)}</p>
                                 </div>
@@ -1160,7 +1325,7 @@ function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
                 const roomData = roomDoc.data();
                 // Filter out AI chat from this list if it's handled separately
                 if (roomData.members.includes("bgune_ai_bot")) {
-                    return null; // Skip AI chat here, it will be a static entry
+                    return null; // Lewati chat AI di sini, ini akan menjadi entri statis
                 }
 
                 const otherUserId = roomData.members.find(id => id !== currentUser.uid);
@@ -1185,11 +1350,11 @@ function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
             });
             const chatListData = (await Promise.all(chatListDataPromises)).filter(Boolean);
             
-            // Sort chats: pinned first, then by last message timestamp
+            // Urutkan chat: yang di-pin dulu, lalu berdasarkan stempel waktu pesan terakhir
             chatListData.sort((a, b) => {
                 if (a.isPinned && !b.isPinned) return -1;
                 if (!a.isPinned && b.isPinned) return 1;
-                // If both are pinned or both are not, sort by timestamp
+                // Jika keduanya di-pin atau keduanya tidak, urutkan berdasarkan stempel waktu
                 const timeA = a.lastMessageTimestamp?.toDate() || new Date(0);
                 const timeB = b.lastMessageTimestamp?.toDate() || new Date(0);
                 return timeB.getTime() - timeA.getTime();
@@ -1231,7 +1396,7 @@ function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
                 <div className="flex flex-col sm:flex-row gap-3">
                     <button 
                         onClick={onFindFriends} 
-                        className="flex-1 flex items-center justify-center space-x-2 bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                        className="flex-1 flex items-center justify-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-medium py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150"
                     >
                         <Search size={20} />
                         <span>Cari & Mulai Chat</span>
@@ -1277,7 +1442,7 @@ function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
                             className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-slate-200 text-slate-500"
                             title={chatItem.isPinned ? "Lepas Pin" : "Sematkan Chat"}
                         >
-                            {chatItem.isPinned ? <PinOff size={18} className="text-indigo-600" /> : <Pin size={18} />}
+                            {chatItem.isPinned ? <PinOff size={18} className="text-blue-600" /> : <Pin size={18} />}
                         </button>
                     </div>
                 ))}
@@ -1352,7 +1517,7 @@ function ChatWindow({ chat, currentUser, onBack }) {
         const unsubscribeTyping = onSnapshot(chatRoomRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                // Pastikan typing status dari user lain, bukan diri sendiri
+                // Pastikan status mengetik dari user lain, bukan diri sendiri
                 if (data.typing && data.typing[chat.otherUserId]) {
                     setIsRemoteTyping(true);
                 } else {
@@ -1425,7 +1590,7 @@ function ChatWindow({ chat, currentUser, onBack }) {
     return (
         <div className="flex flex-col h-full bg-slate-100">
             <div className="flex items-center p-3 sm:p-4 bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
-                <button onClick={onBack} className="mr-3 text-indigo-600 hover:text-indigo-800 p-1.5 rounded-full hover:bg-slate-100 transition">
+                <button onClick={onBack} className="mr-3 text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-slate-100 transition">
                     <ArrowLeft size={22} />
                 </button>
                 <img src={chat.otherUserPhotoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${chat.otherUserName.charAt(0)}`} alt={chat.otherUserName} className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" />
@@ -1460,9 +1625,9 @@ function ChatWindow({ chat, currentUser, onBack }) {
                             }
                         }}
                         placeholder="Ketik pesan Anda..."
-                        className="flex-grow p-3 border border-slate-300 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base"
+                        className="flex-grow p-3 border border-slate-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
                     />
-                    <button type="submit" className="bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-700 transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" disabled={!newMessage.trim()}>
+                    <button type="submit" className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400" disabled={!newMessage.trim()}>
                         <Send size={20} />
                     </button>
                 </form>
@@ -1480,13 +1645,13 @@ function MessageBubble({ message, isCurrentUser, currentUser }) {
 
     return (
         <div className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[70%] sm:max-w-[60%] px-4 py-2.5 rounded-2xl shadow-md ${isCurrentUser ? 'bg-indigo-500 text-white rounded-br-lg' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-lg'}`}>
+            <div className={`max-w-[70%] sm:max-w-[60%] px-4 py-2.5 rounded-2xl shadow-md ${isCurrentUser ? 'bg-blue-500 text-white rounded-br-lg' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-lg'}`}>
                 <p className="text-base leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
                 <div className="flex items-center justify-end mt-1.5">
-                    <p className={`text-xs ${isCurrentUser ? 'text-indigo-200' : 'text-slate-400'}`}>{timeDisplay}</p>
+                    <p className={`text-xs ${isCurrentUser ? 'text-blue-200' : 'text-slate-400'}`}>{timeDisplay}</p>
                     {isCurrentUser && (
                         <span className="ml-1.5">
-                            {isRead ? <CheckCheck size={16} className="text-sky-300" /> : <Check size={16} className="text-indigo-200" />}
+                            {isRead ? <CheckCheck size={16} className="text-sky-300" /> : <Check size={16} className="text-blue-200" />}
                         </span>
                     )}
                 </div>
@@ -1560,11 +1725,12 @@ function AIChatWindow({ chat, currentUser, onBack }) {
 
             // Call AI API
             const prompt = newMessage.trim();
+            // Construct chat history for AI
             let chatHistory = messages.map(msg => ({
                 role: msg.senderId === currentUser.uid ? "user" : "model",
                 parts: [{ text: msg.text }]
             }));
-            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] }); // Add current user prompt
 
             const payload = { contents: chatHistory };
             const apiKey = ""; // Canvas will provide this
@@ -1623,7 +1789,7 @@ function AIChatWindow({ chat, currentUser, onBack }) {
     return (
         <div className="flex flex-col h-full bg-slate-100">
             <div className="flex items-center p-3 sm:p-4 bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
-                <button onClick={onBack} className="mr-3 text-indigo-600 hover:text-indigo-800 p-1.5 rounded-full hover:bg-slate-100 transition">
+                <button onClick={onBack} className="mr-3 text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-slate-100 transition">
                     <ArrowLeft size={22} />
                 </button>
                 <img src={chat.otherUserPhotoURL} alt={chat.otherUserName} className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" />
@@ -1656,10 +1822,10 @@ function AIChatWindow({ chat, currentUser, onBack }) {
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Ketik pesan Anda untuk AI..."
-                        className="flex-grow p-3 border border-slate-300 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base"
+                        className="flex-grow p-3 border border-slate-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
                         disabled={isTyping}
                     />
-                    <button type="submit" className="bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-700 transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" disabled={!newMessage.trim() || isTyping}>
+                    <button type="submit" className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400" disabled={!newMessage.trim() || isTyping}>
                         <Send size={20} />
                     </button>
                 </form>
@@ -1668,7 +1834,7 @@ function AIChatWindow({ chat, currentUser, onBack }) {
     );
 }
 
-function FindFriendsPage({ currentUser, onStartChat, onBack }) {
+function FindFriendsPage({ currentUser, onStartChat, onBack, onViewProfile }) {
     const [users, setUsers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
@@ -1723,7 +1889,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
     return (
         <div className="p-4 sm:p-5 h-full flex flex-col bg-slate-50">
             <div className="flex items-center mb-5">
-                 <button onClick={onBack} className="mr-3 text-indigo-600 hover:text-indigo-800 p-1.5 rounded-full hover:bg-slate-100 transition">
+                 <button onClick={onBack} className="mr-3 text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-slate-100 transition">
                     <ArrowLeft size={22} />
                 </button>
                 <h2 className="text-2xl font-semibold text-slate-800">Cari Pengguna Lain</h2>
@@ -1734,7 +1900,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
                     placeholder="Ketik nama pengguna..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full p-3 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base shadow-sm"
+                    className="w-full p-3 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base shadow-sm"
                 />
                 <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             </div>
@@ -1753,7 +1919,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
                 )}
                 {filteredUsers.map(userItem => ( 
                     <div key={userItem.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200">
-                        <div className="flex items-center overflow-hidden">
+                        <div className="flex items-center overflow-hidden cursor-pointer" onClick={() => onViewProfile(userItem.uid)}>
                             <img src={userItem.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${userItem.displayName.charAt(0)}`} alt={userItem.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
                             <div className="overflow-hidden">
                                 <p className="font-semibold text-slate-700 truncate">{userItem.displayName}</p>
@@ -1762,7 +1928,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
                         </div>
                         <button 
                             onClick={() => handleStartChat(userItem)}
-                            className="bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium py-2 px-4 rounded-md shadow-sm hover:shadow-md transition duration-150 whitespace-nowrap"
+                            className="bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2 px-4 rounded-md shadow-sm hover:shadow-md transition duration-150 whitespace-nowrap"
                         >
                             Mulai Chat
                         </button>
@@ -1774,65 +1940,102 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
 }
 
 
-function UpdatesPage() {
-    const [updates, setUpdates] = useState([]);
+function NotificationsPage({ currentUser, onViewProfile }) {
+    const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        const updatesRef = collection(db, getCollectionPath('appUpdates', true));
-        const q = query(updatesRef, orderBy('createdAt', 'desc'));
+        if (!currentUser?.uid) return;
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const updatesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setUpdates(updatesData);
+        const notificationsRef = collection(db, getCollectionPath('notifications', true)); // Notifikasi bersifat publik
+        const q = query(
+            notificationsRef, 
+            where('recipientId', '==', currentUser.uid),
+            orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
+            const notificationsDataPromises = snapshot.docs.map(async (docSnap) => {
+                const notif = { id: docSnap.id, ...docSnap.data() };
+                if (notif.senderId) {
+                    const senderProfile = await getDoc(doc(db, getCollectionPath('profiles', true), notif.senderId));
+                    notif.sender = senderProfile.exists() ? senderProfile.data() : { displayName: 'Pengguna Tidak Dikenal', photoURL: `https://placehold.co/32x32/CBD5E1/475569?text=U` };
+                }
+                return notif;
+            });
+            const notificationsList = await Promise.all(notificationsDataPromises);
+            setNotifications(notificationsList);
             setLoading(false);
         }, (err) => {
-            console.error("Error fetching updates:", err);
-            setError("Gagal memuat pembaruan aplikasi.");
+            console.error("Error fetching notifications:", err);
+            setError("Gagal memuat notifikasi.");
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
-    
-    const formatDateForUpdates = (timestamp) => {
-        if (!timestamp || !timestamp.toDate) return '';
-        return new Timestamp(timestamp.seconds, timestamp.nanoseconds).toDate().toLocaleDateString('id-ID', {
-            year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
+    }, [currentUser?.uid]);
+
+    const handleMarkAsRead = async (notificationId) => {
+        try {
+            await updateDoc(doc(db, getCollectionPath('notifications', true), notificationId), {
+                isRead: true
+            });
+        } catch (error) {
+            console.error("Error marking notification as read:", error);
+        }
     };
 
+    const handleNotificationClick = (notification) => {
+        handleMarkAsRead(notification.id);
+        // Implementasi navigasi berdasarkan notification.link atau type
+        if (notification.type === 'follow' && notification.senderId) {
+            onViewProfile(notification.senderId);
+        } else if ((notification.type === 'like' || notification.type === 'comment') && notification.postId) {
+            // Untuk saat ini, kita tidak memiliki tampilan postingan khusus, jadi hanya log
+            console.log(`Lihat postingan ${notification.postId}`);
+        }
+    };
+    
     if (loading) {
-        return <div className="p-6 text-center text-slate-500">Memuat info & pembaruan...</div>;
+        return <div className="p-6 text-center text-slate-500">Memuat notifikasi...</div>;
     }
 
     return (
         <div className="p-4 sm:p-6 bg-slate-50 min-h-full">
-            <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center sm:text-left">Info & Pembaruan Aplikasi</h2>
+            <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center sm:text-left">Notifikasi Anda</h2>
             {error && <p className="text-center text-red-500 bg-red-100 p-3 rounded-md mb-4">{error}</p>}
-            {updates.length === 0 && !loading && <p className="text-center text-slate-500 text-lg mt-6">Belum ada pembaruan atau informasi terbaru.</p>}
-            <div className="space-y-6">
-                {updates.map(update => (
-                    <div key={update.id} className="bg-white p-5 sm:p-6 rounded-xl shadow-lg border border-indigo-100 hover:shadow-xl transition-shadow">
-                        <h3 className="text-xl sm:text-2xl font-semibold text-indigo-700 mb-2">{update.title}</h3>
-                        <p className="text-slate-500 text-sm mb-4">
-                            Diposting oleh: {update.author || 'Tim Bgune'} • {formatDateForUpdates(update.createdAt)}
-                        </p>
-                        <div className="text-slate-700 leading-relaxed whitespace-pre-wrap prose prose-sm sm:prose-base max-w-none">{update.content}</div>
+            {notifications.length === 0 && !loading && <p className="text-center text-slate-500 text-lg mt-6">Anda belum memiliki notifikasi.</p>}
+            <div className="space-y-4">
+                {notifications.map(notification => (
+                    <div 
+                        key={notification.id} 
+                        className={`flex items-start p-4 rounded-xl shadow-md border ${notification.isRead ? 'bg-white border-slate-200' : 'bg-blue-50 border-blue-200'} hover:shadow-lg transition-shadow cursor-pointer`}
+                        onClick={() => handleNotificationClick(notification)}
+                    >
+                        <div className="flex-shrink-0 mr-3">
+                            <img src={notification.sender?.photoURL || `https://placehold.co/32x32/CBD5E1/475569?text=U`} alt={notification.sender?.displayName} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                        </div>
+                        <div className="flex-grow">
+                            <p className="text-slate-800 font-medium text-base leading-snug">
+                                {notification.message}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                                {timeAgo(notification.createdAt)}
+                            </p>
+                        </div>
+                        {!notification.isRead && (
+                            <div className="flex-shrink-0 ml-3">
+                                <span className="block w-2.5 h-2.5 bg-blue-500 rounded-full"></span>
+                            </div>
+                        )}
                     </div>
                 ))}
-            </div>
-             <div className="mt-10 p-4 bg-indigo-50 border-2 border-dashed border-indigo-200 rounded-lg text-sm text-indigo-700">
-                <p className="font-semibold mb-1">Catatan untuk Pemilik Web:</p>
-                <p>Untuk menambahkan pembaruan, tambahkan dokumen ke Firestore di path: 
-                <code className="bg-indigo-100 p-1 rounded text-xs mx-1">/artifacts/{appId}/public/data/appUpdates</code>
-                dengan field: `title` (string), `content` (string, bisa markdown), `author` (string, opsional), dan `createdAt` (timestamp).</p>
             </div>
         </div>
     );
 }
 
-function ProfilePage({ currentUser, onLogout }) {
+function ProfilePage({ currentUser, onLogout, onViewProfile }) {
     const [isEditing, setIsEditing] = useState(false);
     const [displayName, setDisplayName] = useState(currentUser.displayName);
     const [bio, setBio] = useState(currentUser.bio);
@@ -1843,13 +2046,33 @@ function ProfilePage({ currentUser, onLogout }) {
     const [userPosts, setUserPosts] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(true);
     const [internalCurrentUser, setInternalCurrentUser] = useState(currentUser); 
+    const [followersCount, setFollowersCount] = useState(currentUser.followersCount || 0);
+    const [followingCount, setFollowingCount] = useState(currentUser.followingCount || 0);
+
 
     useEffect(() => {
         setInternalCurrentUser(currentUser); 
         setDisplayName(currentUser.displayName);
         setBio(currentUser.bio || ''); 
         setPhotoPreview(currentUser.photoURL);
+        setFollowersCount(currentUser.followersCount || 0);
+        setFollowingCount(currentUser.followingCount || 0);
     }, [currentUser]);
+
+    // Listener for current user's profile updates (e.g., followers/following count)
+    useEffect(() => {
+        if (!currentUser?.uid) return;
+        const userDocRef = doc(db, getCollectionPath('profiles', true), currentUser.uid);
+        const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setInternalCurrentUser(prev => ({...prev, ...data}));
+                setFollowersCount(data.followersCount || 0);
+                setFollowingCount(data.followingCount || 0);
+            }
+        }, (err) => console.error("Error fetching current user profile updates:", err));
+        return () => unsubscribe();
+    }, [currentUser?.uid]);
 
 
     useEffect(() => {
@@ -1942,6 +2165,7 @@ function ProfilePage({ currentUser, onLogout }) {
     };
 
     const handlePostChange = () => {
+        // This function can be used to trigger a re-fetch of user posts if needed
         console.log("A post by the user was edited or deleted.");
     };
 
@@ -1953,13 +2177,13 @@ function ProfilePage({ currentUser, onLogout }) {
                         <img 
                             src={isEditing ? photoPreview : internalCurrentUser.photoURL} 
                             alt="Foto Profil" 
-                            className="w-32 h-32 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-indigo-500 shadow-lg"
+                            className="w-32 h-32 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-blue-500 shadow-lg"
                             onError={(e) => e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(internalCurrentUser.displayName || 'P').charAt(0)}`}
                         />
                         {isEditing && (
                             <>
                                 <input type="file" id="profilePhotoEdit" onChange={handlePhotoChange} accept="image/jpeg, image/png" className="hidden" />
-                                <label htmlFor="profilePhotoEdit" className="absolute -bottom-1 -right-1 bg-indigo-600 text-white p-2.5 rounded-full cursor-pointer hover:bg-indigo-700 transition shadow-md">
+                                <label htmlFor="profilePhotoEdit" className="absolute -bottom-1 -right-1 bg-blue-600 text-white p-2.5 rounded-full cursor-pointer hover:bg-blue-700 transition shadow-md">
                                     <ImageIcon size={18}/>
                                 </label>
                             </>
@@ -1973,9 +2197,25 @@ function ProfilePage({ currentUser, onLogout }) {
                             <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mt-3 text-center">{internalCurrentUser.displayName}</h2>
                             <p className="text-slate-600 mt-1 text-center text-base">{internalCurrentUser.email}</p>
                             <p className="text-slate-700 mt-5 text-center leading-relaxed max-w-md text-base">{internalCurrentUser.bio || "Pengguna ini belum menambahkan bio."}</p>
+                            
+                            <div className="flex justify-center space-x-6 mt-6 mb-8">
+                                <div className="text-center">
+                                    <p className="font-bold text-xl text-slate-800">{userPosts.length}</p>
+                                    <p className="text-sm text-slate-500">Postingan</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="font-bold text-xl text-slate-800">{followersCount}</p>
+                                    <p className="text-sm text-slate-500">Pengikut</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="font-bold text-xl text-slate-800">{followingCount}</p>
+                                    <p className="text-sm text-slate-500">Mengikuti</p>
+                                </div>
+                            </div>
+
                             <button 
                                 onClick={() => { setIsEditing(true); setError(''); setDisplayName(internalCurrentUser.displayName); setBio(internalCurrentUser.bio || ''); setPhotoPreview(internalCurrentUser.photoURL); setPhotoFile(null);}}
-                                className="mt-8 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 flex items-center space-x-2 text-base"
+                                className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 flex items-center space-x-2 text-base"
                             >
                                 <Settings size={20} />
                                 <span>Edit Profil</span>
@@ -1986,11 +2226,11 @@ function ProfilePage({ currentUser, onLogout }) {
                             {error && <p className="mb-3 text-sm text-red-600 bg-red-100 p-3 rounded-md text-center">{error}</p>}
                             <div>
                                 <label htmlFor="editDisplayName" className="block text-sm font-medium text-slate-700 mb-1">Nama Tampilan</label>
-                                <input type="text" id="editDisplayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="mt-1 w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base"/>
+                                <input type="text" id="editDisplayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="mt-1 w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"/>
                             </div>
                             <div>
                                 <label htmlFor="editBio" className="block text-sm font-medium text-slate-700 mb-1">Bio Singkat</label>
-                                <textarea id="editBio" value={bio} onChange={(e) => setBio(e.target.value)} rows="3" maxLength="150" className="mt-1 w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base resize-none" placeholder="Maks. 150 karakter"></textarea>
+                                <textarea id="editBio" value={bio} onChange={(e) => setBio(e.target.value)} rows="3" maxLength="150" className="mt-1 w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base resize-none" placeholder="Maks. 150 karakter"></textarea>
                             </div>
                             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-2">
                                 <button 
@@ -2036,6 +2276,7 @@ function ProfilePage({ currentUser, onLogout }) {
                                 currentUser={internalCurrentUser} 
                                 onPostEdited={handlePostChange}
                                 onPostDeleted={handlePostChange}
+                                onViewProfile={onViewProfile} // Pass down for author click
                             />
                         ))}
                     </div>
@@ -2049,5 +2290,199 @@ function ProfilePage({ currentUser, onLogout }) {
     );
 }
 
+function OtherProfilePage({ currentUser, otherUserId, onBack, onStartChat }) {
+    const [otherUser, setOtherUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [otherUserPosts, setOtherUserPosts] = useState([]);
+    const [loadingPosts, setLoadingPosts] = useState(true);
+
+    useEffect(() => {
+        if (!otherUserId) return;
+
+        // Fetch other user's profile
+        const userDocRef = doc(db, getCollectionPath('profiles', true), otherUserId);
+        const unsubscribeProfile = onSnapshot(userDocRef, async (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setOtherUser(data);
+
+                // Check follow status
+                if (currentUser?.uid) {
+                    const followDocRef = doc(db, getCollectionPath('following', true), currentUser.uid, 'userFollowing', otherUserId);
+                    const followSnap = await getDoc(followDocRef);
+                    setIsFollowing(followSnap.exists());
+                }
+            } else {
+                setError("Pengguna tidak ditemukan.");
+            }
+            setLoading(false);
+        }, (err) => {
+            console.error("Error fetching other user profile:", err);
+            setError("Gagal memuat profil pengguna.");
+            setLoading(false);
+        });
+
+        // Fetch other user's posts
+        const postsCollectionRef = collection(db, getCollectionPath('posts', true));
+        const qPosts = query(postsCollectionRef, where('userId', '==', otherUserId), orderBy('createdAt', 'desc'));
+        
+        const unsubscribePosts = onSnapshot(qPosts, async (querySnapshot) => {
+            const postsDataPromises = querySnapshot.docs.map(async (postDoc) => {
+                const post = { id: postDoc.id, ...postDoc.data() };
+                post.author = { 
+                    displayName: otherUser?.displayName || 'Pengguna', 
+                    photoURL: otherUser?.photoURL 
+                };
+                post.likes = post.likes || [];
+                post.commentsCount = post.commentsCount || 0;
+                return post;
+            });
+            const postsData = await Promise.all(postsDataPromises);
+            setOtherUserPosts(postsData);
+            setLoadingPosts(false);
+        }, (error) => {
+            console.error("Error fetching other user posts:", error);
+            setLoadingPosts(false);
+        });
+
+
+        return () => {
+            unsubscribeProfile();
+            unsubscribePosts();
+        };
+    }, [otherUserId, currentUser?.uid, otherUser?.displayName, otherUser?.photoURL]);
+
+    const handleFollowToggle = async () => {
+        if (!currentUser || !otherUser) return;
+
+        const currentUserFollowingRef = doc(db, getCollectionPath('following', true), currentUser.uid, 'userFollowing', otherUser.uid);
+        const otherUserFollowersRef = doc(db, getCollectionPath('followers', true), otherUser.uid, 'userFollowers', currentUser.uid);
+        const otherUserProfileRef = doc(db, getCollectionPath('profiles', true), otherUser.uid);
+        const currentUserProfileRef = doc(db, getCollectionPath('profiles', true), currentUser.uid);
+
+        try {
+            if (isFollowing) {
+                // Unfollow
+                await deleteDoc(currentUserFollowingRef);
+                await deleteDoc(otherUserFollowersRef);
+                await updateDoc(otherUserProfileRef, { followersCount: increment(-1) });
+                await updateDoc(currentUserProfileRef, { followingCount: increment(-1) });
+            } else {
+                // Follow
+                await setDoc(currentUserFollowingRef, { followedAt: serverTimestamp() });
+                await setDoc(otherUserFollowersRef, { followerAt: serverTimestamp() });
+                await updateDoc(otherUserProfileRef, { followersCount: increment(1) });
+                await updateDoc(currentUserProfileRef, { followingCount: increment(1) });
+                sendNotification(otherUser.uid, 'follow', currentUser.uid); // Kirim notifikasi follow
+            }
+            setIsFollowing(prev => !prev);
+        } catch (err) {
+            console.error("Error following/unfollowing:", err);
+            setError("Gagal melakukan aksi. Coba lagi.");
+        }
+    };
+
+    if (loading) {
+        return <div className="p-6 text-center text-slate-500">Memuat profil...</div>;
+    }
+
+    if (error) {
+        return (
+            <div className="p-6 text-center text-red-500 bg-red-100 rounded-md mx-auto max-w-md mt-10">
+                <p>{error}</p>
+                <button onClick={onBack} className="mt-4 bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-2 px-4 rounded-lg">Kembali</button>
+            </div>
+        );
+    }
+
+    if (!otherUser) return null; // Seharusnya tidak terjadi jika tidak ada error dan tidak loading
+
+    return (
+        <div className="p-4 sm:p-6 bg-slate-50 min-h-full">
+            <div className="max-w-2xl mx-auto bg-white shadow-xl rounded-xl p-6 sm:p-8">
+                <div className="flex items-center mb-6">
+                    <button onClick={onBack} className="mr-4 text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-slate-100 transition">
+                        <ArrowLeft size={24} />
+                    </button>
+                    <h2 className="text-2xl font-semibold text-slate-800">Profil Pengguna</h2>
+                </div>
+
+                <div className="flex flex-col items-center">
+                    <div className="relative mb-4">
+                        <img 
+                            src={otherUser.photoURL || `https://placehold.co/150x150/E0E7FF/4F46E5?text=${(otherUser.displayName || 'P').charAt(0)}`} 
+                            alt="Foto Profil" 
+                            className="w-32 h-32 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-blue-500 shadow-lg"
+                            onError={(e) => e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(otherUser.displayName || 'P').charAt(0)}`}
+                        />
+                    </div>
+
+                    <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mt-3 text-center">{otherUser.displayName}</h2>
+                    <p className="text-slate-600 mt-1 text-center text-base">{otherUser.email}</p>
+                    <p className="text-slate-700 mt-5 text-center leading-relaxed max-w-md text-base">{otherUser.bio || "Pengguna ini belum menambahkan bio."}</p>
+                    
+                    <div className="flex justify-center space-x-6 mt-6 mb-8">
+                        <div className="text-center">
+                            <p className="font-bold text-xl text-slate-800">{otherUserPosts.length}</p>
+                            <p className="text-sm text-slate-500">Postingan</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="font-bold text-xl text-slate-800">{otherUser.followersCount || 0}</p>
+                            <p className="text-sm text-slate-500">Pengikut</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="font-bold text-xl text-slate-800">{otherUser.followingCount || 0}</p>
+                            <p className="text-sm text-slate-500">Mengikuti</p>
+                        </div>
+                    </div>
+
+                    <div className="flex space-x-4 mt-4">
+                        <button 
+                            onClick={handleFollowToggle}
+                            className={`flex items-center space-x-2 font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 text-base
+                                ${isFollowing ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
+                        >
+                            {isFollowing ? <UserMinus size={20} /> : <UserPlus size={20} />}
+                            <span>{isFollowing ? 'Berhenti Mengikuti' : 'Ikuti'}</span>
+                        </button>
+                        <button 
+                            onClick={() => onStartChat(otherUser)}
+                            className="flex items-center space-x-2 bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 text-base"
+                        >
+                            <MessageSquare size={20} />
+                            <span>Kirim Pesan</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="mt-10 pt-6 border-t border-slate-200">
+                    <h3 className="text-2xl font-semibold text-slate-800 mb-6 text-center">Postingan {otherUser.displayName}</h3>
+                    {loadingPosts && <p className="text-center text-slate-500">Memuat postingan...</p>}
+                    {!loadingPosts && otherUserPosts.length === 0 && (
+                        <p className="text-center text-slate-500 text-lg">Pengguna ini belum membuat postingan apa pun.</p>
+                    )}
+                    <div className="space-y-6">
+                        {otherUserPosts.map(post => (
+                            <PostCard 
+                                key={post.id} 
+                                post={post} 
+                                currentUser={currentUser} 
+                                onPostEdited={() => {}} // Tidak ada edit/hapus untuk postingan pengguna lain
+                                onPostDeleted={() => {}} 
+                                onViewProfile={() => {}} // Sudah di profil ini
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
+            <footer className="text-center mt-10 py-4">
+                <p className="text-sm text-slate-500">Aplikasi Komunitas Bgune</p>
+                <p className="text-xs text-slate-400">Dibuat oleh Tim Bgune</p>
+            </footer>
+        </div>
+    );
+}
 
 export default App;
