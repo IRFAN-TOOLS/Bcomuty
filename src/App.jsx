@@ -25,13 +25,14 @@ import {
     arrayUnion,
     arrayRemove,
     getDocs,
-    Timestamp
+    Timestamp,
+    deleteDoc // Import deleteDoc
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'; // Import deleteObject
 
 // Import icons from lucide-react
 import { 
-    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon
+    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2 // Added MoreVertical, Edit, Trash2
 } from 'lucide-react';
 
 // Firebase Configuration
@@ -51,8 +52,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-
-// ❗❗ Tambahkan ini kalau belum ada:
 
 const provider = new GoogleAuthProvider();
 
@@ -489,7 +488,7 @@ function CreatePostModal({ currentUser, onClose }) {
     const getYoutubeEmbedUrl = (url) => {
         if (!isValidYoutubeUrl(url)) return null;
         const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null; // Corrected YouTube embed URL
     };
 
 
@@ -589,7 +588,7 @@ function CreatePostModal({ currentUser, onClose }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=xxxxxx"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -607,14 +606,217 @@ function CreatePostModal({ currentUser, onClose }) {
     );
 }
 
+// Modal untuk mengedit postingan
+function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
+    const [text, setText] = useState(post.text);
+    const [imageFile, setImageFile] = useState(null);
+    const [videoUrl, setVideoUrl] = useState(post.videoUrl || '');
+    const [imagePreview, setImagePreview] = useState(post.imageUrl || null);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [error, setError] = useState('');
+    const imageInputRef = useRef(null);
 
-function PostCard({ post, currentUser }) {
+    const handleImageChange = (e) => {
+        setError('');
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            if (file.size > 5 * 1024 * 1024) { // Max 5MB for posts
+                setError("Ukuran gambar maksimal 5MB.");
+                return;
+            }
+            if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+                setError("Format gambar tidak didukung (hanya JPG, PNG, GIF).");
+                return;
+            }
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    const isValidYoutubeUrl = (url) => {
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        return youtubeRegex.test(url);
+    };
+
+    const getYoutubeEmbedUrl = (url) => {
+        if (!isValidYoutubeUrl(url)) return null;
+        const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
+        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!text.trim() && !imageFile && !videoUrl.trim() && !post.imageUrl) {
+            setError("Postingan tidak boleh kosong. Isi teks, gambar, atau video.");
+            return;
+        }
+
+        let finalVideoUrl = '';
+        if (videoUrl.trim()) {
+            finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
+            if (!finalVideoUrl) {
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+                return;
+            }
+        }
+
+        setIsUpdating(true);
+        let imageUrlToStore = post.imageUrl; // Default to existing image URL
+
+        if (imageFile) {
+            // If a new image is selected, upload it
+            const imageRef = ref(storage, `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`);
+            try {
+                const snapshot = await uploadBytes(imageRef, imageFile);
+                imageUrlToStore = await getDownloadURL(snapshot.ref);
+                // Optionally, delete old image if it exists and is different
+                if (post.imageUrl && post.imageUrl !== imageUrlToStore) {
+                    const oldImageRef = ref(storage, post.imageUrl); // This might need parsing to get path
+                    // For simplicity, we're not deleting old images here, as it requires more complex path parsing.
+                    // In a real app, you'd store the storage path in Firestore to make deletion easier.
+                }
+            } catch (uploadError) {
+                console.error("Error uploading new image for post:", uploadError);
+                setError("Gagal mengunggah gambar baru. Coba lagi.");
+                setIsUpdating(false);
+                return;
+            }
+        } else if (imagePreview === null && post.imageUrl) {
+            // If image was removed
+            imageUrlToStore = '';
+            // Delete old image from storage if it was removed
+            if (post.imageUrl) {
+                try {
+                    const imageToDeleteRef = ref(storage, post.imageUrl);
+                    await deleteObject(imageToDeleteRef);
+                } catch (deleteError) {
+                    console.warn("Could not delete old image from storage:", deleteError);
+                }
+            }
+        }
+
+
+        try {
+            const postRef = doc(db, getCollectionPath('posts', true), post.id);
+            await updateDoc(postRef, {
+                text: text.trim(),
+                imageUrl: imageUrlToStore,
+                videoUrl: finalVideoUrl,
+                updatedAt: serverTimestamp(),
+            });
+            onPostUpdated(); // Callback to refresh posts or close modal
+            onClose(); 
+        } catch (updateError) {
+            console.error("Error updating post:", updateError);
+            setError("Gagal memperbarui postingan. Coba lagi.");
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+    
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl p-5 sm:p-7 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-5">
+                    <h3 className="text-2xl font-semibold text-slate-800">Edit Postingan</h3>
+                    <button onClick={onClose} className="text-slate-500 hover:text-slate-700 p-1 rounded-full hover:bg-slate-100 transition">
+                        <X size={24} />
+                    </button>
+                </div>
+                {error && <p className="mb-4 text-sm text-red-600 bg-red-100 p-3 rounded-md text-center">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div>
+                        <textarea
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            placeholder="Apa yang Anda pikirkan hari ini?"
+                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none text-base"
+                            rows="5"
+                        />
+                    </div>
+                    <div className="space-y-3">
+                        <button type="button" onClick={() => imageInputRef.current.click()} className="w-full flex items-center justify-center space-x-2 text-indigo-600 hover:text-indigo-800 py-2.5 px-3 bg-indigo-50 rounded-lg border-2 border-dashed border-indigo-300 hover:border-indigo-500 transition">
+                            <ImageIcon size={22} /> 
+                            <span className="font-medium">Ubah Gambar</span>
+                        </button>
+                        <input type="file" ref={imageInputRef} onChange={handleImageChange} accept="image/jpeg, image/png, image/gif" className="hidden" />
+                        {imagePreview && (
+                            <div className="mt-2 relative group">
+                                <img src={imagePreview} alt="Preview" className="rounded-lg max-h-60 w-auto mx-auto object-contain border border-slate-200" />
+                                <button type="button" onClick={() => {setImageFile(null); setImagePreview(null); imageInputRef.current.value = null;}} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                     <div>
+                        <label htmlFor="videoUrl" className="block text-sm font-medium text-slate-700 mb-1">URL Video YouTube (opsional)</label>
+                        <div className="flex items-center space-x-2">
+                            <VideoIcon size={22} className="text-slate-500" />
+                            <input
+                                type="url"
+                                id="videoUrl"
+                                value={videoUrl}
+                                onChange={(e) => setVideoUrl(e.target.value)}
+                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                        </div>
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={isUpdating}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out disabled:opacity-60 text-lg"
+                    >
+                        {isUpdating ? 'Memperbarui...' : 'Perbarui Postingan'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// Modal konfirmasi penghapusan
+function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel }) {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
+                <h3 className="text-xl font-semibold text-slate-800 mb-4">Konfirmasi Penghapusan</h3>
+                <p className="text-slate-700 mb-6">{message}</p>
+                <div className="flex justify-center space-x-4">
+                    <button
+                        onClick={onConfirm}
+                        className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                    >
+                        Hapus
+                    </button>
+                    <button
+                        onClick={onCancel}
+                        className="bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                    >
+                        Batal
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added onPostEdited, onPostDeleted
     const [liked, setLiked] = useState(post.likes?.includes(currentUser.uid) || false);
     const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState('');
     const [loadingComments, setLoadingComments] = useState(false);
+    const [showOptions, setShowOptions] = useState(false); // State for dropdown menu
+    const [showEditModal, setShowEditModal] = useState(false); // State for edit modal
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // State for delete confirmation
+
+    const isMyPost = post.userId === currentUser.uid;
 
     const handleLike = async () => {
         if (!currentUser || !post.id) return;
@@ -688,15 +890,62 @@ function PostCard({ post, currentUser }) {
         }
     };
 
+    const handleDeletePost = async () => {
+        setShowDeleteConfirm(false); // Close confirmation modal
+        if (!post.id) return;
+
+        try {
+            // Delete image from storage if it exists
+            if (post.imageUrl) {
+                const imageRef = ref(storage, post.imageUrl);
+                await deleteObject(imageRef);
+            }
+            // Delete post document
+            await deleteDoc(doc(db, getCollectionPath('posts', true), post.id));
+            onPostDeleted(post.id); // Notify parent component
+        } catch (error) {
+            console.error("Error deleting post:", error);
+            // Optionally show an error message to the user
+        }
+    };
+
     return (
         <div className="bg-white shadow-lg rounded-xl overflow-hidden mx-2 sm:mx-auto max-w-xl border border-slate-200">
             <div className="p-4 sm:p-5">
-                <div className="flex items-center mb-4">
-                    <img src={post.author?.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${(post.author?.displayName || 'U').charAt(0)}`} alt={post.author?.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
-                    <div>
-                        <p className="font-semibold text-slate-800 text-md">{post.author?.displayName || 'Pengguna Bgune'}</p>
-                        <p className="text-xs text-slate-500">{timeAgo(post.createdAt)}</p>
+                <div className="flex items-center justify-between mb-4"> {/* Added justify-between */}
+                    <div className="flex items-center">
+                        <img src={post.author?.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${(post.author?.displayName || 'U').charAt(0)}`} alt={post.author?.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
+                        <div>
+                            <p className="font-semibold text-slate-800 text-md">{post.author?.displayName || 'Pengguna Bgune'}</p>
+                            <p className="text-xs text-slate-500">{timeAgo(post.createdAt)}</p>
+                        </div>
                     </div>
+                    {isMyPost && (
+                        <div className="relative">
+                            <button 
+                                onClick={() => setShowOptions(!showOptions)}
+                                className="p-2 rounded-full hover:bg-slate-100 transition"
+                            >
+                                <MoreVertical size={20} />
+                            </button>
+                            {showOptions && (
+                                <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20 border border-slate-200">
+                                    <button 
+                                        onClick={() => { setShowEditModal(true); setShowOptions(false); }}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                                    >
+                                        <Edit size={16} className="mr-2" /> Edit
+                                    </button>
+                                    <button 
+                                        onClick={() => { setShowDeleteConfirm(true); setShowOptions(false); }}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                    >
+                                        <Trash2 size={16} className="mr-2" /> Hapus
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
                 {post.text && <p className="text-slate-700 mb-4 whitespace-pre-wrap text-base leading-relaxed">{post.text}</p>}
                 {post.imageUrl && <img src={post.imageUrl} alt="Postingan" className="rounded-lg w-full max-h-[60vh] object-contain mb-4 border border-slate-200 bg-slate-50" onError={(e) => e.target.style.display='none'} />}
@@ -756,6 +1005,22 @@ function PostCard({ post, currentUser }) {
                     </div>
                 </div>
             )}
+
+            {showEditModal && (
+                <EditPostModal 
+                    post={post} 
+                    currentUser={currentUser} 
+                    onClose={() => setShowEditModal(false)} 
+                    onPostUpdated={onPostEdited}
+                />
+            )}
+
+            <ConfirmDeleteModal
+                isOpen={showDeleteConfirm}
+                message="Apakah Anda yakin ingin menghapus postingan ini? Tindakan ini tidak dapat dibatalkan."
+                onConfirm={handleDeletePost}
+                onCancel={() => setShowDeleteConfirm(false)}
+            />
         </div>
     );
 }
@@ -769,13 +1034,17 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
         if (!currentUser || !currentUser.uid) return;
 
         const chatRoomsRef = collection(db, getCollectionPath('chatRooms', true));
+        // Query to get chat rooms where the current user is a member
+        // Order by updatedAt to show most recent chats first
         const q = query(chatRoomsRef, where('members', 'array-contains', currentUser.uid), orderBy('updatedAt', 'desc'));
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
             const chatListDataPromises = snapshot.docs.map(async (roomDoc) => {
                 const roomData = roomDoc.data();
+                // Find the other user's ID in the members array
                 const otherUserId = roomData.members.find(id => id !== currentUser.uid);
                 if (otherUserId) {
+                    // Fetch the other user's profile data
                     const userDocRef = doc(db, getCollectionPath('profiles', true), otherUserId);
                     const userSnap = await getDoc(userDocRef);
                     if (userSnap.exists()) {
@@ -785,13 +1054,14 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
                             otherUserId: otherUserId,
                             otherUserName: otherUser.displayName,
                             otherUserPhotoURL: otherUser.photoURL,
-                            lastMessage: roomData.lastMessage?.text || "...",
-                            lastMessageTimestamp: roomData.lastMessage?.timestamp,
+                            lastMessage: roomData.lastMessage?.text || "...", // Display last message text
+                            lastMessageTimestamp: roomData.lastMessage?.timestamp, // Display last message timestamp
                         };
                     }
                 }
-                return null; 
+                return null; // Return null if other user profile not found
             });
+            // Filter out nulls and set the chat list
             const chatListData = (await Promise.all(chatListDataPromises)).filter(Boolean);
             setChats(chatListData);
             setLoading(false);
@@ -994,20 +1264,22 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
     const handleStartChat = async (otherUser) => {
         const currentUserId = currentUser.uid;
         const otherUserId = otherUser.uid;
+        // Create a consistent chat ID by sorting UIDs
         const chatId = [currentUserId, otherUserId].sort().join('_');
         const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chatId);
 
         try {
             const chatRoomSnap = await getDoc(chatRoomRef);
             if (!chatRoomSnap.exists()) {
+                // If chat room doesn't exist, create it
                 await setDoc(chatRoomRef, {
                     members: [currentUserId, otherUserId],
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
-                    lastMessage: null,
+                    lastMessage: null, // Initialize last message
                 });
             }
-            onStartChat(otherUser);
+            onStartChat(otherUser); // Navigate to chat window
         } catch (err) {
             console.error("Error creating/checking chat room:", err);
             setError("Gagal memulai chat. Coba lagi.");
@@ -1131,6 +1403,36 @@ function ProfilePage({ currentUser, onLogout }) {
     const [photoPreview, setPhotoPreview] = useState(currentUser.photoURL);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
+    const [userPosts, setUserPosts] = useState([]); // State for user's posts
+    const [loadingPosts, setLoadingPosts] = useState(true);
+
+    // Fetch user's posts
+    useEffect(() => {
+        if (!currentUser || !currentUser.uid) return;
+
+        const postsCollectionRef = collection(db, getCollectionPath('posts', true));
+        const q = query(postsCollectionRef, where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
+        
+        const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+            const postsDataPromises = querySnapshot.docs.map(async (postDoc) => {
+                const post = { id: postDoc.id, ...postDoc.data() };
+                // Author is always current user for their own posts
+                post.author = { 
+                    displayName: currentUser.displayName, 
+                    photoURL: currentUser.photoURL 
+                };
+                return post;
+            });
+            const postsData = await Promise.all(postsDataPromises);
+            setUserPosts(postsData);
+            setLoadingPosts(false);
+        }, (error) => {
+            console.error("Error fetching user posts:", error);
+            setLoadingPosts(false);
+        });
+
+        return () => unsubscribe();
+    }, [currentUser]);
 
     const handlePhotoChange = (e) => {
         setError('');
@@ -1191,6 +1493,12 @@ function ProfilePage({ currentUser, onLogout }) {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    // Callback for when a post is edited or deleted from PostCard
+    const handlePostChange = () => {
+        // This will trigger a re-fetch of user posts due to the onSnapshot listener
+        // No explicit action needed here other than ensuring the listener is active.
     };
 
     return (
@@ -1269,6 +1577,26 @@ function ProfilePage({ currentUser, onLogout }) {
                         </button>
                     </div>
                 </div>
+
+                {/* Bagian Postingan Pengguna */}
+                <div className="mt-10 pt-6 border-t border-slate-200">
+                    <h3 className="text-2xl font-semibold text-slate-800 mb-6 text-center">Postingan Anda</h3>
+                    {loadingPosts && <p className="text-center text-slate-500">Memuat postingan Anda...</p>}
+                    {!loadingPosts && userPosts.length === 0 && (
+                        <p className="text-center text-slate-500 text-lg">Anda belum membuat postingan apa pun.</p>
+                    )}
+                    <div className="space-y-6">
+                        {userPosts.map(post => (
+                            <PostCard 
+                                key={post.id} 
+                                post={post} 
+                                currentUser={currentUser} 
+                                onPostEdited={handlePostChange} // Pass callback for edit
+                                onPostDeleted={handlePostChange} // Pass callback for delete
+                            />
+                        ))}
+                    </div>
+                </div>
             </div>
             <footer className="text-center mt-10 py-4">
                 <p className="text-sm text-slate-500">Aplikasi Komunitas Bgune</p>
@@ -1280,4 +1608,3 @@ function ProfilePage({ currentUser, onLogout }) {
 
 
 export default App;
-
