@@ -39,7 +39,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
     apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0",
   authDomain: "bgune---community.firebaseapp.com",
   projectId: "bgune---community",
-  storageBucket: "bgune---community.firebasestorage.app",
+  storageBucket: "bgune---community.appspot.com",
   messagingSenderId: "749511144215",
   appId: "1:749511144215:web:dcf13c4d59dc705d4f7d52",
   measurementId: "G-5XRSG2H5SV" };
@@ -59,19 +59,18 @@ const provider = new GoogleAuthProvider();
 // Helper function to get user ID
 const getCurrentUserId = () => auth.currentUser?.uid || null;
 
-// Firestore collection paths (simplified)
-const getCollectionPath = (collectionName, isPublic = false) => {
+// Firestore collection paths (simplified)const getCollectionPath = (collectionName, isPublic = false) => {
     const userId = getCurrentUserId();
     if (isPublic) {
         return `/artifacts/${appId}/public/data/${collectionName}`;
     }
     if (!userId) {
-        console.warn("User not authenticated for private collection access. Path might be incorrect.");
-        // Allow path generation for anonymous users if needed for specific public-like private collections
-        return `/artifacts/${appId}/users/anonymous/${collectionName}`; 
+        console.warn("User not authenticated for private collection access.");
+        return `/artifacts/${appId}/users/anonymous/data/${collectionName}`; 
     }
-    return `/artifacts/${appId}/users/${userId}/${collectionName}`;
+    return `/artifacts/${appId}/users/${userId}/data/${collectionName}`;  // << TAMBAHKAN /data/
 };
+
 
 // --- Utility Functions ---
 const timeAgo = (timestamp) => {
