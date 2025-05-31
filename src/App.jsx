@@ -26,24 +26,26 @@ import {
     arrayRemove,
     getDocs,
     Timestamp,
-    deleteDoc // Import deleteDoc
+    deleteDoc,
+    increment // Ditambahkan untuk increment
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'; // Import deleteObject
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // Import icons from lucide-react
 import { 
-    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2 // Added MoreVertical, Edit, Trash2
+    Home, MessageSquare, Bell, UserCircle, LogOut, PlusCircle, Send, Search, Image as ImageIcon, Video as VideoIcon, Users, Settings, X, ArrowLeft, Heart, MessageCircle as CommentIcon, MoreVertical, Edit, Trash2, Check, CheckCheck // Ditambahkan Check, CheckCheck
 } from 'lucide-react';
 
 // Firebase Configuration
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0",
-  authDomain: "bgune---community.firebaseapp.com",
-  projectId: "bgune---community",
-  storageBucket: "bgune---community.appspot.com",
-  messagingSenderId: "749511144215",
-  appId: "1:749511144215:web:dcf13c4d59dc705d4f7d52",
-  measurementId: "G-5XRSG2H5SV" };
+    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // Ganti dengan API key Anda jika tidak disediakan oleh environment
+    authDomain: "bgune---community.firebaseapp.com",
+    projectId: "bgune---community",
+    storageBucket: "bgune---community.appspot.com",
+    messagingSenderId: "749511144215",
+    appId: "1:749511144215:web:dcf13c4d59dc705d4f7d52",
+    measurementId: "G-5XRSG2H5SV" 
+};
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'bgune-komunitas-app-revised';
 
@@ -66,7 +68,8 @@ const getCollectionPath = (collectionName, isPublic = false) => {
     }
     if (!userId) {
         console.warn("User not authenticated for private collection access.");
-        return `/artifacts/${appId}/users/anonymous/data/${collectionName}`;
+        // Fallback ke path umum jika user tidak ada, atau handle sesuai kebutuhan
+        return `/artifacts/${appId}/public/data/${collectionName}`; // Atau path khusus untuk anonim
     }
     return `/artifacts/${appId}/users/${userId}/data/${collectionName}`;
 };
@@ -101,29 +104,43 @@ function App() {
     const [loadingAuth, setLoadingAuth] = useState(true);
     const [isProfileComplete, setIsProfileComplete] = useState(false);
     const [currentView, setCurrentView] = useState('feed'); 
-    const [selectedChat, setSelectedChat] = useState(null);
+    const [selectedChat, setSelectedChat] = useState(null); // { chatId, otherUserName, otherUserPhotoURL, otherUserId }
     const [showCreatePostModal, setShowCreatePostModal] = useState(false);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 const userDocRef = doc(db, getCollectionPath('profiles', true), firebaseUser.uid);
+                
+                // Update online status
+                try {
+                    await setDoc(userDocRef, { 
+                        isOnline: true, 
+                        lastActive: serverTimestamp() 
+                    }, { merge: true });
+                } catch (e) {
+                    console.error("Error setting online status:", e);
+                }
+
                 const userDocSnap = await getDoc(userDocRef);
 
                 if (userDocSnap.exists() && userDocSnap.data().bio) {
                     setUser({ ...firebaseUser, ...userDocSnap.data() });
                     setIsProfileComplete(true);
                 } else {
-                    setUser(firebaseUser);
+                    setUser(firebaseUser); // Set basic user first
                     setIsProfileComplete(false);
+                    // Create basic profile if not exists, useful for first login
                     if (!userDocSnap.exists()) {
-                        try {
+                         try {
                             await setDoc(userDocRef, {
                                 uid: firebaseUser.uid,
                                 displayName: firebaseUser.displayName || 'Pengguna Baru',
                                 email: firebaseUser.email,
                                 photoURL: firebaseUser.photoURL || `https://placehold.co/100x100/E0E7FF/4F46E5?text=${(firebaseUser.displayName || 'P').charAt(0)}`,
                                 createdAt: serverTimestamp(),
+                                isOnline: true,
+                                lastActive: serverTimestamp()
                             }, { merge: true });
                         } catch (error) {
                             console.error("Error creating basic user profile:", error);
@@ -138,61 +155,90 @@ function App() {
         });
         
         const attemptInitialSignIn = async () => {
-            if (auth.currentUser) return; // Already signed in or being handled by onAuthStateChanged
+            if (auth.currentUser) return; 
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
-                    await signInAnonymously(auth);
+                    // await signInAnonymously(auth); // Pertimbangkan apakah login anonim diperlukan jika token tidak ada
+                    console.log("No initial auth token, user needs to login manually or anonymous sign-in can be enabled.");
                 }
             } catch (error) {
                 console.error("Initial sign-in error:", error);
-                // Fallback to anonymous if custom token fails or not present
                 if (!auth.currentUser) {
-                    try { await signInAnonymously(auth); }
-                    catch (anonError) { console.error("Anonymous sign-in fallback error:", anonError); }
+                    // try { await signInAnonymously(auth); } // Fallback
+                    // catch (anonError) { console.error("Anonymous sign-in fallback error:", anonError); }
                 }
             }
         };
         attemptInitialSignIn();
 
-        return () => unsubscribe();
+        // Handle user leaving the page (best effort for offline status)
+        const handleBeforeUnload = () => {
+            if (auth.currentUser) {
+                const userStatusRef = doc(db, getCollectionPath('profiles', true), auth.currentUser.uid);
+                updateDoc(userStatusRef, { isOnline: false, lastActive: serverTimestamp() })
+                    .catch(e => console.error("Error setting offline status on unload:", e));
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            unsubscribe();
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            // Set user offline if component unmounts (e.g., tab close)
+            if (auth.currentUser) {
+                 const userStatusRef = doc(db, getCollectionPath('profiles', true), auth.currentUser.uid);
+                 updateDoc(userStatusRef, { isOnline: false, lastActive: serverTimestamp() })
+                    .catch(e => console.error("Error setting offline status on unmount:", e));
+            }
+        };
     }, []);
     
-const handleLogin = async () => {
-  try {
-    const result = await signInWithPopup(auth, provider);
-    console.log("Login berhasil:", result.user);
-    // lanjutkan ke halaman lain / set user state
-  } catch (error) {
-    alert("Login gagal: " + error.message);
-    console.error("Login gagal:", error);
-  }
-};
+    const handleLogin = async () => {
+        setLoadingAuth(true);
+        try {
+            const result = await signInWithPopup(auth, provider);
+            // onAuthStateChanged will handle setting user state and profile completion check
+        } catch (error) {
+            console.error("Login gagal:", error);
+            // Provide user feedback, e.g., using a toast notification library
+            setLoadingAuth(false);
+        }
+    };
     
-
     const handleLogout = async () => {
+        if (auth.currentUser) {
+            const userStatusRef = doc(db, getCollectionPath('profiles', true), auth.currentUser.uid);
+            try {
+                await updateDoc(userStatusRef, { isOnline: false, lastActive: serverTimestamp() });
+            } catch (e) {
+                console.error("Error setting offline status on logout:", e);
+            }
+        }
         try {
             setSelectedChat(null);
             await signOut(auth);
+            // User state will be set to null by onAuthStateChanged
         } catch (error) {
             console.error("Error signing out:", error);
         }
     };
 
-    const completeProfile = async () => {
+    const completeProfile = async (profileData) => { // Terima profileData dari ProfileSetup
         if (auth.currentUser) {
-            const userDocRef = doc(db, getCollectionPath('profiles', true), auth.currentUser.uid);
-            const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
-                setUser({ ...auth.currentUser, ...userDocSnap.data() });
-                setIsProfileComplete(true);
-            }
+            // setUser akan diupdate oleh onAuthStateChanged setelah profile diupdate dan dibaca ulang
+            // Cukup set isProfileComplete ke true
+            setUser(prevUser => ({ ...prevUser, ...profileData })); // Optimistic update
+            setIsProfileComplete(true);
         }
     };
     
     const openChatWithUser = (otherUser) => {
-        if (!user || !otherUser) return;
+        if (!user || !otherUser || !user.uid || !otherUser.uid) {
+            console.error("Cannot open chat: current user or other user is undefined.");
+            return;
+        }
         const chatId = [user.uid, otherUser.uid].sort().join('_');
         setSelectedChat({
             chatId: chatId,
@@ -221,7 +267,7 @@ const handleLogin = async () => {
         }
         switch (currentView) {
             case 'feed': return <Feed currentUser={user} />;
-            case 'chatList': return <ChatList currentUser={user} onSelectChat={setSelectedChat} onFindFriends={() => setCurrentView('findFriends')} />;
+            case 'chatList': return <ChatList currentUser={user} onSelectChat={openChatWithUser} onFindFriends={() => setCurrentView('findFriends')} />;
             case 'updates': return <UpdatesPage />;
             case 'profile': return <ProfilePage currentUser={user} onLogout={handleLogout} />;
             case 'findFriends': return <FindFriendsPage currentUser={user} onStartChat={openChatWithUser} onBack={() => setCurrentView('chatList')} />;
@@ -231,7 +277,7 @@ const handleLogin = async () => {
 
     return (
         <div className="flex flex-col h-screen font-inter bg-slate-50">
-            <div className="flex-grow overflow-y-auto pb-20"> {/* Increased padding-bottom for nav bar */}
+            <div className="flex-grow overflow-y-auto pb-20">
                 <MainContent />
             </div>
 
@@ -245,7 +291,7 @@ const handleLogin = async () => {
             <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
                 <div className="flex justify-around items-center max-w-md mx-auto h-16">
                     <NavItem icon={<Home />} label="Beranda" active={currentView === 'feed'} onClick={() => {setCurrentView('feed'); setSelectedChat(null);}} />
-                    <NavItem icon={<MessageSquare />} label="Pesan" active={currentView === 'chatList' || currentView === 'chat' || currentView === 'findFriends'} onClick={() => {setCurrentView('chatList'); setSelectedChat(null);}} />
+                    <NavItem icon={<MessageSquare />} label="Pesan" active={['chatList', 'chat', 'findFriends'].includes(currentView)} onClick={() => {setCurrentView('chatList'); setSelectedChat(null);}} />
                     <button 
                         onClick={() => setShowCreatePostModal(true)}
                         className="absolute left-1/2 top-0 transform -translate-x-1/2 -translate-y-[calc(50%-8px)] bg-indigo-600 text-white rounded-full p-3.5 shadow-xl hover:bg-indigo-700 transition duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50"
@@ -327,17 +373,22 @@ function ProfileSetup({ user, onProfileComplete }) {
         }
         
         const userDocRef = doc(db, getCollectionPath('profiles', true), user.uid);
+        const profileData = {
+            uid: user.uid,
+            displayName: displayName.trim(),
+            email: user.email, // Pastikan email disimpan jika belum ada
+            photoURL: photoURLToSave,
+            bio: bio.trim(),
+            // createdAt sudah ada jika ini update, jika baru, tambahkan serverTimestamp()
+            createdAt: user.createdAt || serverTimestamp(), 
+            updatedAt: serverTimestamp(),
+            isOnline: true, // Set online saat profil selesai
+            lastActive: serverTimestamp()
+        };
+
         try {
-            await setDoc(userDocRef, {
-                uid: user.uid,
-                displayName: displayName.trim(),
-                email: user.email,
-                photoURL: photoURLToSave,
-                bio: bio.trim(),
-                createdAt: user.createdAt || serverTimestamp(),
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-            onProfileComplete();
+            await setDoc(userDocRef, profileData, { merge: true });
+            onProfileComplete(profileData); // Kirim data profil yang baru disimpan
         } catch (saveError) {
             console.error("Error saving profile:", saveError);
             setError("Gagal menyimpan profil. Coba lagi.");
@@ -427,6 +478,9 @@ function Feed({ currentUser }) {
                     const userSnap = await getDoc(userDocRef);
                     post.author = userSnap.exists() ? userSnap.data() : { displayName: 'Pengguna Anonim', photoURL: `https://placehold.co/40x40/CBD5E1/475569?text=A` };
                 }
+                // Pastikan likes dan commentsCount ada, default ke array kosong atau 0
+                post.likes = post.likes || [];
+                post.commentsCount = post.commentsCount || 0;
                 return post;
             });
             const postsData = await Promise.all(postsDataPromises);
@@ -440,6 +494,14 @@ function Feed({ currentUser }) {
         return () => unsubscribe();
     }, []);
 
+    const handlePostUpdate = () => {
+        // Fungsi ini bisa digunakan jika ada kebutuhan refresh manual,
+        // tapi onSnapshot seharusnya sudah menangani update otomatis.
+        // Untuk saat ini, bisa dibiarkan kosong atau digunakan untuk logging.
+        console.log("Post list potentially updated.");
+    };
+
+
     if (loading) {
         return <div className="p-6 text-center text-slate-500">Memuat postingan...</div>;
     }
@@ -448,7 +510,13 @@ function Feed({ currentUser }) {
         <div className="py-4 md:py-6 space-y-4 md:space-y-6">
             {posts.length === 0 && <p className="text-center text-slate-500 mt-10 text-lg">Belum ada postingan. <br/> Jadilah yang pertama berbagi!</p>}
             {posts.map(post => (
-                <PostCard key={post.id} post={post} currentUser={currentUser} />
+                <PostCard 
+                    key={post.id} 
+                    post={post} 
+                    currentUser={currentUser} 
+                    onPostEdited={handlePostUpdate} // Callback jika diperlukan
+                    onPostDeleted={handlePostUpdate} // Callback jika diperlukan
+                />
             ))}
         </div>
     );
@@ -477,6 +545,7 @@ function CreatePostModal({ currentUser, onClose }) {
             }
             setImageFile(file);
             setImagePreview(URL.createObjectURL(file));
+            e.target.value = null; // Reset input file
         }
     };
     
@@ -488,7 +557,7 @@ function CreatePostModal({ currentUser, onClose }) {
     const getYoutubeEmbedUrl = (url) => {
         if (!isValidYoutubeUrl(url)) return null;
         const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null; // Corrected YouTube embed URL
+        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
     };
 
 
@@ -504,15 +573,18 @@ function CreatePostModal({ currentUser, onClose }) {
         if (videoUrl.trim()) {
             finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
             if (!finalVideoUrl) {
-                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=VIDEO_ID");
+                setIsPosting(false); // Hentikan posting jika URL video tidak valid
                 return;
             }
         }
 
         setIsPosting(true);
         let imageUrlToStore = '';
+        let imageStoragePath = ''; // Simpan path untuk penghapusan jika diperlukan
         if (imageFile) {
-            const imageRef = ref(storage, `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`);
+            imageStoragePath = `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+            const imageRef = ref(storage, imageStoragePath);
             try {
                 const snapshot = await uploadBytes(imageRef, imageFile);
                 imageUrlToStore = await getDownloadURL(snapshot.ref);
@@ -530,7 +602,8 @@ function CreatePostModal({ currentUser, onClose }) {
                 userId: currentUser.uid,
                 text: text.trim(),
                 imageUrl: imageUrlToStore,
-                videoUrl: finalVideoUrl, // Store embed URL
+                imageStoragePath: imageStoragePath, // Simpan path storage
+                videoUrl: finalVideoUrl,
                 createdAt: serverTimestamp(),
                 likes: [],
                 commentsCount: 0,
@@ -573,7 +646,7 @@ function CreatePostModal({ currentUser, onClose }) {
                         {imagePreview && (
                             <div className="mt-2 relative group">
                                 <img src={imagePreview} alt="Preview" className="rounded-lg max-h-60 w-auto mx-auto object-contain border border-slate-200" />
-                                <button type="button" onClick={() => {setImageFile(null); setImagePreview(null); imageInputRef.current.value = null;}} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button type="button" onClick={() => {setImageFile(null); setImagePreview(null); if(imageInputRef.current) imageInputRef.current.value = null;}} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                     <X size={16} />
                                 </button>
                             </div>
@@ -588,7 +661,7 @@ function CreatePostModal({ currentUser, onClose }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=VIDEO_ID"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -610,7 +683,7 @@ function CreatePostModal({ currentUser, onClose }) {
 function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const [text, setText] = useState(post.text);
     const [imageFile, setImageFile] = useState(null);
-    const [videoUrl, setVideoUrl] = useState(post.videoUrl || '');
+    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? `https://www.youtube.com/watch?v=${post.videoUrl.split('/').pop()}` : ''); // Konversi balik ke URL standar
     const [imagePreview, setImagePreview] = useState(post.imageUrl || null);
     const [isUpdating, setIsUpdating] = useState(false);
     const [error, setError] = useState('');
@@ -620,7 +693,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
         setError('');
         if (e.target.files[0]) {
             const file = e.target.files[0];
-            if (file.size > 5 * 1024 * 1024) { // Max 5MB for posts
+            if (file.size > 5 * 1024 * 1024) {
                 setError("Ukuran gambar maksimal 5MB.");
                 return;
             }
@@ -630,6 +703,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
             }
             setImageFile(file);
             setImagePreview(URL.createObjectURL(file));
+            e.target.value = null; 
         }
     };
 
@@ -647,7 +721,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        if (!text.trim() && !imageFile && !videoUrl.trim() && !post.imageUrl) {
+        if (!text.trim() && !imageFile && !videoUrl.trim() && !imagePreview) { // Cek imagePreview juga
             setError("Postingan tidak boleh kosong. Isi teks, gambar, atau video.");
             return;
         }
@@ -656,44 +730,51 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
         if (videoUrl.trim()) {
             finalVideoUrl = getYoutubeEmbedUrl(videoUrl.trim());
             if (!finalVideoUrl) {
-                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+                setError("URL Video YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=VIDEO_ID");
+                setIsUpdating(false);
                 return;
             }
         }
 
         setIsUpdating(true);
-        let imageUrlToStore = post.imageUrl; // Default to existing image URL
+        let imageUrlToStore = post.imageUrl;
+        let imageStoragePathToStore = post.imageStoragePath || '';
 
-        if (imageFile) {
-            // If a new image is selected, upload it
-            const imageRef = ref(storage, `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`);
-            try {
-                const snapshot = await uploadBytes(imageRef, imageFile);
-                imageUrlToStore = await getDownloadURL(snapshot.ref);
-                // Optionally, delete old image if it exists and is different
-                if (post.imageUrl && post.imageUrl !== imageUrlToStore) {
-                    const oldImageRef = ref(storage, post.imageUrl); // This might need parsing to get path
-                    // For simplicity, we're not deleting old images here, as it requires more complex path parsing.
-                    // In a real app, you'd store the storage path in Firestore to make deletion easier.
+
+        // Handle image update/removal
+        if (imageFile) { // Gambar baru dipilih
+            // Hapus gambar lama dari storage jika ada dan berbeda
+            if (post.imageStoragePath && post.imageStoragePath !== imageStoragePathToStore) {
+                try {
+                    const oldImageRef = ref(storage, post.imageStoragePath);
+                    await deleteObject(oldImageRef);
+                } catch (deleteError) {
+                    console.warn("Gagal menghapus gambar lama dari storage:", deleteError);
                 }
+            }
+            // Unggah gambar baru
+            imageStoragePathToStore = `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+            const newImageRef = ref(storage, imageStoragePathToStore);
+            try {
+                const snapshot = await uploadBytes(newImageRef, imageFile);
+                imageUrlToStore = await getDownloadURL(snapshot.ref);
             } catch (uploadError) {
                 console.error("Error uploading new image for post:", uploadError);
                 setError("Gagal mengunggah gambar baru. Coba lagi.");
                 setIsUpdating(false);
                 return;
             }
-        } else if (imagePreview === null && post.imageUrl) {
-            // If image was removed
-            imageUrlToStore = '';
-            // Delete old image from storage if it was removed
-            if (post.imageUrl) {
+        } else if (imagePreview === null && post.imageUrl) { // Gambar dihapus oleh pengguna
+            if (post.imageStoragePath) {
                 try {
-                    const imageToDeleteRef = ref(storage, post.imageUrl);
+                    const imageToDeleteRef = ref(storage, post.imageStoragePath);
                     await deleteObject(imageToDeleteRef);
                 } catch (deleteError) {
                     console.warn("Could not delete old image from storage:", deleteError);
                 }
             }
+            imageUrlToStore = '';
+            imageStoragePathToStore = '';
         }
 
 
@@ -702,10 +783,11 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
             await updateDoc(postRef, {
                 text: text.trim(),
                 imageUrl: imageUrlToStore,
+                imageStoragePath: imageStoragePathToStore,
                 videoUrl: finalVideoUrl,
                 updatedAt: serverTimestamp(),
             });
-            onPostUpdated(); // Callback to refresh posts or close modal
+            if (onPostUpdated) onPostUpdated(); 
             onClose(); 
         } catch (updateError) {
             console.error("Error updating post:", updateError);
@@ -744,7 +826,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                         {imagePreview && (
                             <div className="mt-2 relative group">
                                 <img src={imagePreview} alt="Preview" className="rounded-lg max-h-60 w-auto mx-auto object-contain border border-slate-200" />
-                                <button type="button" onClick={() => {setImageFile(null); setImagePreview(null); imageInputRef.current.value = null;}} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button type="button" onClick={() => {setImageFile(null); setImagePreview(null); if(imageInputRef.current) imageInputRef.current.value = null;}} className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                     <X size={16} />
                                 </button>
                             </div>
@@ -759,7 +841,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
                                 id="videoUrl"
                                 value={videoUrl}
                                 onChange={(e) => setVideoUrl(e.target.value)}
-                                placeholder="Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                                placeholder="Contoh: https://www.youtube.com/watch?v=VIDEO_ID"
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -778,7 +860,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
 }
 
 // Modal konfirmasi penghapusan
-function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel }) {
+function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel, isDeleting }) {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
@@ -788,13 +870,15 @@ function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel }) {
                 <div className="flex justify-center space-x-4">
                     <button
                         onClick={onConfirm}
-                        className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                        disabled={isDeleting}
+                        className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 disabled:opacity-50"
                     >
-                        Hapus
+                        {isDeleting ? "Menghapus..." : "Hapus"}
                     </button>
                     <button
                         onClick={onCancel}
-                        className="bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150"
+                        disabled={isDeleting}
+                        className="bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 disabled:opacity-50"
                     >
                         Batal
                     </button>
@@ -805,18 +889,28 @@ function ConfirmDeleteModal({ isOpen, message, onConfirm, onCancel }) {
 }
 
 
-function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added onPostEdited, onPostDeleted
+function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) {
     const [liked, setLiked] = useState(post.likes?.includes(currentUser.uid) || false);
     const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
+    const [currentCommentsCount, setCurrentCommentsCount] = useState(post.commentsCount || 0); // State lokal untuk jumlah komentar
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState('');
     const [loadingComments, setLoadingComments] = useState(false);
-    const [showOptions, setShowOptions] = useState(false); // State for dropdown menu
-    const [showEditModal, setShowEditModal] = useState(false); // State for edit modal
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // State for delete confirmation
+    const [showOptions, setShowOptions] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeletingPost, setIsDeletingPost] = useState(false);
 
     const isMyPost = post.userId === currentUser.uid;
+
+    // Update state lokal jika prop post berubah (misalnya dari onSnapshot di Feed)
+    useEffect(() => {
+        setLiked(post.likes?.includes(currentUser.uid) || false);
+        setLikesCount(post.likes?.length || 0);
+        setCurrentCommentsCount(post.commentsCount || 0);
+    }, [post, currentUser.uid]);
+
 
     const handleLike = async () => {
         if (!currentUser || !post.id) return;
@@ -824,12 +918,15 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
         try {
             if (liked) {
                 await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
-                setLikesCount(prev => prev - 1);
+                // State lokal diupdate oleh useEffect di atas saat post.likes berubah dari snapshot
             } else {
                 await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
-                setLikesCount(prev => prev + 1);
+                // State lokal diupdate oleh useEffect
             }
+            // Optimistic update untuk UI lebih responsif sebelum snapshot kembali
             setLiked(!liked);
+            setLikesCount(prev => liked ? prev -1 : prev + 1);
+
         } catch (error) {
             console.error("Error updating like:", error);
         }
@@ -882,8 +979,10 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
                 userId: currentUser.uid,
                 createdAt: serverTimestamp()
             });
+            // Update commentsCount di post document
             const postRef = doc(db, getCollectionPath('posts', true), post.id);
-            await updateDoc(postRef, { commentsCount: (post.commentsCount || 0) + 1 });
+            await updateDoc(postRef, { commentsCount: increment(1) }); 
+            // State lokal commentsCount akan diupdate oleh useEffect saat post.commentsCount berubah dari snapshot
             setNewComment('');
         } catch (error) {
             console.error("Error adding comment:", error);
@@ -891,28 +990,31 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
     };
 
     const handleDeletePost = async () => {
-        setShowDeleteConfirm(false); // Close confirmation modal
-        if (!post.id) return;
+        setShowDeleteConfirm(false);
+        if (!post.id || isDeletingPost) return;
+        setIsDeletingPost(true);
 
         try {
-            // Delete image from storage if it exists
-            if (post.imageUrl) {
-                const imageRef = ref(storage, post.imageUrl);
+            // Hapus gambar dari storage jika ada
+            if (post.imageStoragePath) { // Gunakan imageStoragePath
+                const imageRef = ref(storage, post.imageStoragePath);
                 await deleteObject(imageRef);
             }
-            // Delete post document
+            // Hapus dokumen post
             await deleteDoc(doc(db, getCollectionPath('posts', true), post.id));
-            onPostDeleted(post.id); // Notify parent component
+            if (onPostDeleted) onPostDeleted(post.id); 
         } catch (error) {
             console.error("Error deleting post:", error);
-            // Optionally show an error message to the user
+            // Tampilkan pesan error ke pengguna jika perlu
+        } finally {
+            setIsDeletingPost(false);
         }
     };
 
     return (
         <div className="bg-white shadow-lg rounded-xl overflow-hidden mx-2 sm:mx-auto max-w-xl border border-slate-200">
             <div className="p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-4"> {/* Added justify-between */}
+                <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center">
                         <img src={post.author?.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${(post.author?.displayName || 'U').charAt(0)}`} alt={post.author?.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
                         <div>
@@ -952,7 +1054,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
                 {post.videoUrl && (
                     <div className="aspect-video mb-4 rounded-lg overflow-hidden border border-slate-200">
                         <iframe 
-                            src={post.videoUrl}
+                            src={post.videoUrl} // Ini sudah URL embed
                             title="Video Postingan" 
                             frameBorder="0" 
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
@@ -970,7 +1072,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
                     </button>
                     <button onClick={() => setShowComments(!showComments)} className="flex items-center space-x-1.5 p-2 rounded-lg hover:bg-slate-100 transition-colors hover:text-slate-800">
                         <CommentIcon size={20} />
-                        <span className="text-sm font-medium">{post.commentsCount || 0} Komentar</span>
+                        <span className="text-sm font-medium">{currentCommentsCount} Komentar</span>
                     </button>
                 </div>
             </div>
@@ -1011,7 +1113,10 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
                     post={post} 
                     currentUser={currentUser} 
                     onClose={() => setShowEditModal(false)} 
-                    onPostUpdated={onPostEdited}
+                    onPostUpdated={() => {
+                        if(onPostEdited) onPostEdited();
+                        setShowEditModal(false); // Tutup modal setelah update
+                    }}
                 />
             )}
 
@@ -1020,6 +1125,7 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted }) { // Added
                 message="Apakah Anda yakin ingin menghapus postingan ini? Tindakan ini tidak dapat dibatalkan."
                 onConfirm={handleDeletePost}
                 onCancel={() => setShowDeleteConfirm(false)}
+                isDeleting={isDeletingPost}
             />
         </div>
     );
@@ -1031,20 +1137,19 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!currentUser || !currentUser.uid) return;
+        if (!currentUser || !currentUser.uid) {
+            setLoading(false);
+            return;
+        }
 
         const chatRoomsRef = collection(db, getCollectionPath('chatRooms', true));
-        // Query to get chat rooms where the current user is a member
-        // Order by updatedAt to show most recent chats first
         const q = query(chatRoomsRef, where('members', 'array-contains', currentUser.uid), orderBy('updatedAt', 'desc'));
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
             const chatListDataPromises = snapshot.docs.map(async (roomDoc) => {
                 const roomData = roomDoc.data();
-                // Find the other user's ID in the members array
                 const otherUserId = roomData.members.find(id => id !== currentUser.uid);
                 if (otherUserId) {
-                    // Fetch the other user's profile data
                     const userDocRef = doc(db, getCollectionPath('profiles', true), otherUserId);
                     const userSnap = await getDoc(userDocRef);
                     if (userSnap.exists()) {
@@ -1054,14 +1159,14 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
                             otherUserId: otherUserId,
                             otherUserName: otherUser.displayName,
                             otherUserPhotoURL: otherUser.photoURL,
-                            lastMessage: roomData.lastMessage?.text || "...", // Display last message text
-                            lastMessageTimestamp: roomData.lastMessage?.timestamp, // Display last message timestamp
+                            lastMessage: roomData.lastMessage?.text || "...",
+                            lastMessageTimestamp: roomData.lastMessage?.timestamp,
+                            // Anda bisa menambahkan unread count di sini jika diimplementasikan
                         };
                     }
                 }
-                return null; // Return null if other user profile not found
+                return null;
             });
-            // Filter out nulls and set the chat list
             const chatListData = (await Promise.all(chatListDataPromises)).filter(Boolean);
             setChats(chatListData);
             setLoading(false);
@@ -1097,20 +1202,24 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
                 </div>
             )}
             <div className="flex-grow overflow-y-auto">
-                {chats.map(chat => (
+                {chats.map(chatItem => ( // Ganti nama variabel agar tidak konflik
                     <div
-                        key={chat.chatId}
-                        onClick={() => onSelectChat(chat)}
+                        key={chatItem.chatId}
+                        onClick={() => onSelectChat({ // Pastikan onSelectChat menerima objek user lengkap
+                            uid: chatItem.otherUserId, 
+                            displayName: chatItem.otherUserName, 
+                            photoURL: chatItem.otherUserPhotoURL
+                        })}
                         className="flex items-center p-3 sm:p-4 hover:bg-slate-100 cursor-pointer border-b border-slate-200 transition-colors"
                     >
-                        <img src={chat.otherUserPhotoURL || `https://placehold.co/48x48/E0E7FF/4F46E5?text=${chat.otherUserName.charAt(0)}`} alt={chat.otherUserName} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full mr-3 sm:mr-4 object-cover shadow-sm" />
+                        <img src={chatItem.otherUserPhotoURL || `https://placehold.co/48x48/E0E7FF/4F46E5?text=${chatItem.otherUserName.charAt(0)}`} alt={chatItem.otherUserName} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full mr-3 sm:mr-4 object-cover shadow-sm" />
                         <div className="flex-grow overflow-hidden">
-                            <p className="font-semibold text-slate-800 text-md truncate">{chat.otherUserName}</p>
-                            <p className="text-sm text-slate-500 truncate">{chat.lastMessage}</p>
+                            <p className="font-semibold text-slate-800 text-md truncate">{chatItem.otherUserName}</p>
+                            <p className="text-sm text-slate-500 truncate">{chatItem.lastMessage}</p>
                         </div>
-                        {chat.lastMessageTimestamp && (
+                        {chatItem.lastMessageTimestamp && (
                              <p className="text-xs text-slate-400 ml-2 whitespace-nowrap self-start mt-1">
-                                {formatTimestamp(chat.lastMessageTimestamp)}
+                                {formatTimestamp(chatItem.lastMessageTimestamp)}
                             </p>
                         )}
                     </div>
@@ -1121,11 +1230,14 @@ function ChatList({ currentUser, onSelectChat, onFindFriends }) {
 }
 
 
-function ChatWindow({ chat, currentUser, onBack }) {
+function ChatWindow({ chat, currentUser, onBack }) { // chat: { chatId, otherUserName, otherUserPhotoURL, otherUserId }
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [loadingMessages, setLoadingMessages] = useState(true);
     const messagesEndRef = useRef(null);
+    const [otherUserDetails, setOtherUserDetails] = useState(null); // Untuk status online
+    const [isRemoteTyping, setIsRemoteTyping] = useState(false);
+    const typingTimeoutRef = useRef(null);
 
     const scrollToBottom = useCallback(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1133,25 +1245,93 @@ function ChatWindow({ chat, currentUser, onBack }) {
 
     useEffect(scrollToBottom, [messages, scrollToBottom]);
 
+    // Fetch other user's details for online status
+    useEffect(() => {
+        if (chat?.otherUserId) {
+            const userRef = doc(db, getCollectionPath('profiles', true), chat.otherUserId);
+            const unsubscribe = onSnapshot(userRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    setOtherUserDetails(docSnap.data());
+                } else {
+                    setOtherUserDetails(null); // Atau handle user tidak ditemukan
+                }
+            });
+            return () => unsubscribe();
+        }
+    }, [chat?.otherUserId]);
+
+    // Fetch messages and listen for typing status
     useEffect(() => {
         if (!chat || !chat.chatId) return;
         setLoadingMessages(true);
+        
+        // Listener untuk pesan
         const messagesRef = collection(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages');
-        const q = query(messagesRef, orderBy('timestamp', 'asc'));
+        const qMessages = query(messagesRef, orderBy('timestamp', 'asc'));
+        const unsubscribeMessages = onSnapshot(qMessages, async (snapshot) => {
+            const msgs = [];
+            const updatePromises = [];
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            snapshot.docs.forEach(docSnap => {
+                const msgData = { id: docSnap.id, ...docSnap.data() };
+                msgs.push(msgData);
+                // Tandai pesan sebagai terbaca jika diterima oleh currentUser dan belum dibaca
+                if (msgData.recipientId === currentUser.uid && !msgData.readAt) {
+                    const msgRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages', docSnap.id);
+                    updatePromises.push(updateDoc(msgRef, { readAt: serverTimestamp() }));
+                }
+            });
+            
+            await Promise.all(updatePromises); // Jalankan semua update readAt
             setMessages(msgs);
             setLoadingMessages(false);
-             // Mark messages as read (simplified: assume opening chat means reading)
-            // More complex: store unread counts per user in chatRoom doc
         }, (error) => {
             console.error("Error fetching messages:", error);
             setLoadingMessages(false);
         });
 
-        return () => unsubscribe();
-    }, [chat]);
+        // Listener untuk status mengetik
+        const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId);
+        const unsubscribeTyping = onSnapshot(chatRoomRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.typing && data.typing[chat.otherUserId]) {
+                    setIsRemoteTyping(true);
+                } else {
+                    setIsRemoteTyping(false);
+                }
+            }
+        });
+
+        return () => {
+            unsubscribeMessages();
+            unsubscribeTyping();
+            // Hentikan status mengetik saat window ditutup/pindah
+            if (currentUser?.uid && chat?.chatId) {
+                const roomRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId);
+                updateDoc(roomRef, { [`typing.${currentUser.uid}`]: false }).catch(console.error);
+            }
+        };
+    }, [chat, currentUser.uid]);
+
+    const handleTypingChange = (isTyping) => {
+        if (!currentUser?.uid || !chat?.chatId) return;
+        clearTimeout(typingTimeoutRef.current);
+        const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chat.chatId);
+        
+        // Update status mengetik di Firestore
+        // Gunakan dot notation untuk update field nested di map
+        updateDoc(chatRoomRef, {
+            [`typing.${currentUser.uid}`]: isTyping 
+        }).catch(console.error);
+
+        if (isTyping) {
+            typingTimeoutRef.current = setTimeout(() => {
+                updateDoc(chatRoomRef, { [`typing.${currentUser.uid}`]: false }).catch(console.error);
+            }, 3000); // Berhenti mengetik setelah 3 detik tidak aktif
+        }
+    };
+
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
@@ -1160,7 +1340,9 @@ function ChatWindow({ chat, currentUser, onBack }) {
         const messageData = {
             text: newMessage.trim(),
             senderId: currentUser.uid,
+            recipientId: chat.otherUserId, // Penting untuk status terbaca
             timestamp: serverTimestamp(),
+            readAt: null, // Awalnya belum dibaca
         };
         
         const messagesRef = collection(db, getCollectionPath('chatRooms', true), chat.chatId, 'messages');
@@ -1171,15 +1353,18 @@ function ChatWindow({ chat, currentUser, onBack }) {
             await updateDoc(chatRoomRef, {
                 lastMessage: { text: newMessage.trim(), senderId: currentUser.uid, timestamp: serverTimestamp() },
                 updatedAt: serverTimestamp(),
+                [`typing.${currentUser.uid}`]: false // Berhenti mengetik setelah mengirim
             });
             setNewMessage('');
+            clearTimeout(typingTimeoutRef.current); // Hapus timeout mengetik
         } catch (error) {
             console.error("Error sending message:", error);
-            // Show user error
         }
     };
     
-    if (!chat) return null; // Should not happen if navigation is correct
+    if (!chat) return null;
+
+    const onlineStatusText = otherUserDetails?.isOnline ? 'Online' : (otherUserDetails?.lastActive ? `Terakhir aktif ${timeAgo(otherUserDetails.lastActive)}` : 'Offline');
 
     return (
         <div className="flex flex-col h-full bg-slate-100">
@@ -1188,7 +1373,10 @@ function ChatWindow({ chat, currentUser, onBack }) {
                     <ArrowLeft size={22} />
                 </button>
                 <img src={chat.otherUserPhotoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${chat.otherUserName.charAt(0)}`} alt={chat.otherUserName} className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" />
-                <h2 className="font-semibold text-slate-800 text-lg">{chat.otherUserName}</h2>
+                <div>
+                    <h2 className="font-semibold text-slate-800 text-lg">{chat.otherUserName}</h2>
+                    <p className="text-xs text-slate-500">{isRemoteTyping ? "Sedang mengetik..." : onlineStatusText}</p>
+                </div>
             </div>
 
             <div className="flex-grow overflow-y-auto p-4 space-y-3">
@@ -1197,7 +1385,7 @@ function ChatWindow({ chat, currentUser, onBack }) {
                     <p className="text-center text-slate-500 py-4">Tidak ada pesan. Mulai percakapan!</p>
                 )}
                 {messages.map(msg => (
-                    <MessageBubble key={msg.id} message={msg} isCurrentUser={msg.senderId === currentUser.uid} />
+                    <MessageBubble key={msg.id} message={msg} isCurrentUser={msg.senderId === currentUser.uid} currentUser={currentUser} />
                 ))}
                 <div ref={messagesEndRef} />
             </div>
@@ -1207,7 +1395,14 @@ function ChatWindow({ chat, currentUser, onBack }) {
                     <input
                         type="text"
                         value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
+                        onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            if (e.target.value.trim()) {
+                                handleTypingChange(true);
+                            } else {
+                                handleTypingChange(false);
+                            }
+                        }}
                         placeholder="Ketik pesan Anda..."
                         className="flex-grow p-3 border border-slate-300 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base"
                     />
@@ -1220,13 +1415,23 @@ function ChatWindow({ chat, currentUser, onBack }) {
     );
 }
 
-function MessageBubble({ message, isCurrentUser }) {
+function MessageBubble({ message, isCurrentUser, currentUser }) {
     const timeDisplay = formatTimestamp(message.timestamp);
+    const isRead = message.readAt && message.senderId === currentUser.uid; // Pesan dikirim oleh currentUser dan sudah dibaca penerima
+    const isSent = message.senderId === currentUser.uid && !message.readAt; // Pesan dikirim oleh currentUser tapi belum dibaca penerima
+
     return (
         <div className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[70%] sm:max-w-[60%] px-4 py-2.5 rounded-2xl shadow-md ${isCurrentUser ? 'bg-indigo-500 text-white rounded-br-lg' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-lg'}`}>
                 <p className="text-base leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
-                <p className={`text-xs mt-1.5 ${isCurrentUser ? 'text-indigo-200 text-right' : 'text-slate-400 text-right'}`}>{timeDisplay}</p>
+                <div className="flex items-center justify-end mt-1.5">
+                    <p className={`text-xs ${isCurrentUser ? 'text-indigo-200' : 'text-slate-400'}`}>{timeDisplay}</p>
+                    {isCurrentUser && (
+                        <span className="ml-1.5">
+                            {isRead ? <CheckCheck size={16} className="text-sky-300" /> : <Check size={16} className="text-indigo-200" />}
+                        </span>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -1241,8 +1446,7 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
 
     useEffect(() => {
         const usersRef = collection(db, getCollectionPath('profiles', true));
-        // Exclude current user from the list
-        const q = query(usersRef, where('uid', '!=', currentUser.uid));
+        const q = query(usersRef, where('uid', '!=', currentUser.uid)); // Jangan tampilkan diri sendiri
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -1264,22 +1468,21 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
     const handleStartChat = async (otherUser) => {
         const currentUserId = currentUser.uid;
         const otherUserId = otherUser.uid;
-        // Create a consistent chat ID by sorting UIDs
         const chatId = [currentUserId, otherUserId].sort().join('_');
         const chatRoomRef = doc(db, getCollectionPath('chatRooms', true), chatId);
 
         try {
             const chatRoomSnap = await getDoc(chatRoomRef);
             if (!chatRoomSnap.exists()) {
-                // If chat room doesn't exist, create it
                 await setDoc(chatRoomRef, {
                     members: [currentUserId, otherUserId],
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
-                    lastMessage: null, // Initialize last message
+                    lastMessage: null,
+                    typing: {} // Inisialisasi field typing
                 });
             }
-            onStartChat(otherUser); // Navigate to chat window
+            onStartChat(otherUser); // otherUser adalah objek { uid, displayName, photoURL }
         } catch (err) {
             console.error("Error creating/checking chat room:", err);
             setError("Gagal memulai chat. Coba lagi.");
@@ -1311,20 +1514,23 @@ function FindFriendsPage({ currentUser, onStartChat, onBack }) {
                 {!loading && filteredUsers.length === 0 && searchTerm && (
                     <p className="text-center text-slate-500 py-4">Tidak ada pengguna ditemukan dengan nama "{searchTerm}".</p>
                 )}
-                {!loading && filteredUsers.length === 0 && !searchTerm && (
-                    <p className="text-center text-slate-500 py-4">Ketik nama untuk mencari pengguna.</p>
+                {!loading && filteredUsers.length === 0 && !searchTerm && users.length > 0 && (
+                     <p className="text-center text-slate-500 py-4">Daftar pengguna. Ketik untuk mencari.</p>
                 )}
-                {filteredUsers.map(user => (
-                    <div key={user.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200">
+                 {!loading && users.length === 0 && !searchTerm && (
+                    <p className="text-center text-slate-500 py-4">Belum ada pengguna lain di platform ini.</p>
+                )}
+                {filteredUsers.map(userItem => ( // Ganti nama variabel
+                    <div key={userItem.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200">
                         <div className="flex items-center overflow-hidden">
-                            <img src={user.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${user.displayName.charAt(0)}`} alt={user.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
+                            <img src={userItem.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${userItem.displayName.charAt(0)}`} alt={userItem.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
                             <div className="overflow-hidden">
-                                <p className="font-semibold text-slate-700 truncate">{user.displayName}</p>
-                                <p className="text-sm text-slate-500 truncate">{user.bio?.substring(0,35)}{user.bio?.length > 35 ? '...' : ''}</p>
+                                <p className="font-semibold text-slate-700 truncate">{userItem.displayName}</p>
+                                <p className="text-sm text-slate-500 truncate">{userItem.bio?.substring(0,35)}{userItem.bio?.length > 35 ? '...' : ''}</p>
                             </div>
                         </div>
                         <button 
-                            onClick={() => handleStartChat(user)}
+                            onClick={() => handleStartChat(userItem)}
                             className="bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium py-2 px-4 rounded-md shadow-sm hover:shadow-md transition duration-150 whitespace-nowrap"
                         >
                             Mulai Chat
@@ -1403,24 +1609,33 @@ function ProfilePage({ currentUser, onLogout }) {
     const [photoPreview, setPhotoPreview] = useState(currentUser.photoURL);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
-    const [userPosts, setUserPosts] = useState([]); // State for user's posts
+    const [userPosts, setUserPosts] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(true);
+    const [internalCurrentUser, setInternalCurrentUser] = useState(currentUser); // State lokal untuk update UI instan
 
-    // Fetch user's posts
     useEffect(() => {
-        if (!currentUser || !currentUser.uid) return;
+        setInternalCurrentUser(currentUser); // Sinkronkan dengan prop jika berubah
+        setDisplayName(currentUser.displayName);
+        setBio(currentUser.bio || ''); // Pastikan bio tidak undefined
+        setPhotoPreview(currentUser.photoURL);
+    }, [currentUser]);
+
+
+    useEffect(() => {
+        if (!internalCurrentUser || !internalCurrentUser.uid) return;
 
         const postsCollectionRef = collection(db, getCollectionPath('posts', true));
-        const q = query(postsCollectionRef, where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'));
+        const q = query(postsCollectionRef, where('userId', '==', internalCurrentUser.uid), orderBy('createdAt', 'desc'));
         
         const unsubscribe = onSnapshot(q, async (querySnapshot) => {
             const postsDataPromises = querySnapshot.docs.map(async (postDoc) => {
                 const post = { id: postDoc.id, ...postDoc.data() };
-                // Author is always current user for their own posts
                 post.author = { 
-                    displayName: currentUser.displayName, 
-                    photoURL: currentUser.photoURL 
+                    displayName: internalCurrentUser.displayName, 
+                    photoURL: internalCurrentUser.photoURL 
                 };
+                post.likes = post.likes || [];
+                post.commentsCount = post.commentsCount || 0;
                 return post;
             });
             const postsData = await Promise.all(postsDataPromises);
@@ -1432,13 +1647,13 @@ function ProfilePage({ currentUser, onLogout }) {
         });
 
         return () => unsubscribe();
-    }, [currentUser]);
+    }, [internalCurrentUser]);
 
     const handlePhotoChange = (e) => {
         setError('');
         if (e.target.files[0]) {
             const file = e.target.files[0];
-            if (file.size > 2 * 1024 * 1024) { // Max 2MB
+            if (file.size > 2 * 1024 * 1024) {
                 setError("Ukuran foto profil maksimal 2MB.");
                 return;
             }
@@ -1448,6 +1663,7 @@ function ProfilePage({ currentUser, onLogout }) {
             }
             setPhotoFile(file);
             setPhotoPreview(URL.createObjectURL(file));
+            e.target.value = null;
         }
     };
     
@@ -1458,10 +1674,17 @@ function ProfilePage({ currentUser, onLogout }) {
             return;
         }
         setIsSaving(true);
-        let newPhotoURL = currentUser.photoURL;
+        let newPhotoURL = internalCurrentUser.photoURL;
 
         if (photoFile) {
-            const photoRef = ref(storage, `profile_photos/${currentUser.uid}/${Date.now()}_${photoFile.name}`);
+            // Hapus foto lama jika ada dan berbeda (opsional, tergantung kebutuhan)
+            // if (internalCurrentUser.photoURL && internalCurrentUser.photoURL.includes('firebasestorage')) {
+            //     try {
+            //         const oldPhotoRef = ref(storage, internalCurrentUser.photoURL);
+            //         await deleteObject(oldPhotoRef);
+            //     } catch (e) { console.warn("Gagal hapus foto profil lama:", e); }
+            // }
+            const photoRef = ref(storage, `profile_photos/${internalCurrentUser.uid}/${Date.now()}_${photoFile.name}`);
             try {
                 const snapshot = await uploadBytes(photoRef, photoFile);
                 newPhotoURL = await getDownloadURL(snapshot.ref);
@@ -1473,20 +1696,17 @@ function ProfilePage({ currentUser, onLogout }) {
             }
         }
 
-        const userDocRef = doc(db, getCollectionPath('profiles', true), currentUser.uid);
+        const userDocRef = doc(db, getCollectionPath('profiles', true), internalCurrentUser.uid);
+        const updatedProfileData = {
+            displayName: displayName.trim(),
+            bio: bio.trim(),
+            photoURL: newPhotoURL,
+            updatedAt: serverTimestamp()
+        };
         try {
-            await updateDoc(userDocRef, {
-                displayName: displayName.trim(),
-                bio: bio.trim(),
-                photoURL: newPhotoURL,
-                updatedAt: serverTimestamp()
-            });
-            // Update local state immediately for better UX
-            currentUser.displayName = displayName.trim();
-            currentUser.bio = bio.trim();
-            currentUser.photoURL = newPhotoURL;
+            await updateDoc(userDocRef, updatedProfileData);
+            setInternalCurrentUser(prev => ({...prev, ...updatedProfileData})); // Update state lokal untuk UI
             setIsEditing(false);
-            // No alert needed, UI will reflect changes
         } catch (saveError) {
             console.error("Error updating profile:", saveError);
             setError("Gagal memperbarui profil. Coba lagi.");
@@ -1495,10 +1715,10 @@ function ProfilePage({ currentUser, onLogout }) {
         }
     };
 
-    // Callback for when a post is edited or deleted from PostCard
     const handlePostChange = () => {
-        // This will trigger a re-fetch of user posts due to the onSnapshot listener
-        // No explicit action needed here other than ensuring the listener is active.
+        // onSnapshot pada userPosts akan menangani pembaruan daftar postingan.
+        // Bisa digunakan untuk logging atau UI feedback tambahan jika perlu.
+        console.log("A post by the user was edited or deleted.");
     };
 
     return (
@@ -1507,10 +1727,10 @@ function ProfilePage({ currentUser, onLogout }) {
                 <div className="flex flex-col items-center">
                     <div className="relative mb-4">
                         <img 
-                            src={isEditing ? photoPreview : currentUser.photoURL} 
+                            src={isEditing ? photoPreview : internalCurrentUser.photoURL} 
                             alt="Foto Profil" 
                             className="w-32 h-32 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-indigo-500 shadow-lg"
-                            onError={(e) => e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(currentUser.displayName || 'P').charAt(0)}`}
+                            onError={(e) => e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(internalCurrentUser.displayName || 'P').charAt(0)}`}
                         />
                         {isEditing && (
                             <>
@@ -1526,11 +1746,11 @@ function ProfilePage({ currentUser, onLogout }) {
 
                     {!isEditing ? (
                         <>
-                            <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mt-3 text-center">{currentUser.displayName}</h2>
-                            <p className="text-slate-600 mt-1 text-center text-base">{currentUser.email}</p>
-                            <p className="text-slate-700 mt-5 text-center leading-relaxed max-w-md text-base">{currentUser.bio || "Pengguna ini belum menambahkan bio."}</p>
+                            <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mt-3 text-center">{internalCurrentUser.displayName}</h2>
+                            <p className="text-slate-600 mt-1 text-center text-base">{internalCurrentUser.email}</p>
+                            <p className="text-slate-700 mt-5 text-center leading-relaxed max-w-md text-base">{internalCurrentUser.bio || "Pengguna ini belum menambahkan bio."}</p>
                             <button 
-                                onClick={() => { setIsEditing(true); setError(''); setDisplayName(currentUser.displayName); setBio(currentUser.bio); setPhotoPreview(currentUser.photoURL); setPhotoFile(null);}}
+                                onClick={() => { setIsEditing(true); setError(''); setDisplayName(internalCurrentUser.displayName); setBio(internalCurrentUser.bio || ''); setPhotoPreview(internalCurrentUser.photoURL); setPhotoFile(null);}}
                                 className="mt-8 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 flex items-center space-x-2 text-base"
                             >
                                 <Settings size={20} />
@@ -1567,7 +1787,7 @@ function ProfilePage({ currentUser, onLogout }) {
                     )}
                     
                     <div className="mt-10 border-t border-slate-200 w-full pt-6 text-center">
-                        <p className="text-sm text-slate-500 mb-2">ID Pengguna Anda: <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{currentUser.uid}</code></p>
+                        <p className="text-sm text-slate-500 mb-2">ID Pengguna Anda: <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{internalCurrentUser.uid}</code></p>
                         <button
                             onClick={onLogout}
                             className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 flex items-center space-x-2 mx-auto text-base"
@@ -1578,7 +1798,6 @@ function ProfilePage({ currentUser, onLogout }) {
                     </div>
                 </div>
 
-                {/* Bagian Postingan Pengguna */}
                 <div className="mt-10 pt-6 border-t border-slate-200">
                     <h3 className="text-2xl font-semibold text-slate-800 mb-6 text-center">Postingan Anda</h3>
                     {loadingPosts && <p className="text-center text-slate-500">Memuat postingan Anda...</p>}
@@ -1590,9 +1809,9 @@ function ProfilePage({ currentUser, onLogout }) {
                             <PostCard 
                                 key={post.id} 
                                 post={post} 
-                                currentUser={currentUser} 
-                                onPostEdited={handlePostChange} // Pass callback for edit
-                                onPostDeleted={handlePostChange} // Pass callback for delete
+                                currentUser={internalCurrentUser} 
+                                onPostEdited={handlePostChange}
+                                onPostDeleted={handlePostChange}
                             />
                         ))}
                     </div>
@@ -1600,7 +1819,7 @@ function ProfilePage({ currentUser, onLogout }) {
             </div>
             <footer className="text-center mt-10 py-4">
                 <p className="text-sm text-slate-500">Aplikasi Komunitas Bgune</p>
-                <p className="text-xs text-slate-400">Dibuat oleh M. Irham</p>
+                <p className="text-xs text-slate-400">Dibuat oleh Tim Bgune</p>
             </footer>
         </div>
     );
