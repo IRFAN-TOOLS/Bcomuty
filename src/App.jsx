@@ -670,7 +670,7 @@ function CreatePostModal({ currentUser, onClose }) {
     const getYoutubeEmbedUrl = (url) => {
         if (!isValidYoutubeUrl(url)) return null;
         const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `http://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
     };
 
 
@@ -827,7 +827,7 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const getYoutubeEmbedUrl = (url) => {
         if (!isValidYoutubeUrl(url)) return null;
         const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `http://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
     };
 
     const handleSubmit = async (e) => {
@@ -1035,9 +1035,8 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfil
                     sendNotification(post.userId, 'like', currentUser.uid, post.id);
                 }
             }
-            setLiked(!liked);
-            setLikesCount(prev => liked ? prev -1 : prev + 1);
-
+            setLiked(prev => !prev); // Toggle liked status
+            setLikesCount(prev => liked ? prev -1 : prev + 1); // Update count
         } catch (error) {
             console.error("handleLike: Error updating like:", error);
         }
@@ -1337,8 +1336,12 @@ function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
             const chatListData = (await Promise.all(chatListDataPromises)).filter(Boolean);
             
             chatListData.sort((a, b) => {
+                // Pinned chats first
                 if (a.isPinned && !b.isPinned) return -1;
                 if (!a.isPinned && b.isPinned) return 1;
+                // Then by unread count (higher unread count first)
+                if (b.unreadCount !== a.unreadCount) return b.unreadCount - a.unreadCount;
+                // Finally by last message timestamp or update time
                 const timeA = a.lastMessageTimestamp?.toDate() || (a.updatedAt?.toDate() || new Date(0));
                 const timeB = b.lastMessageTimestamp?.toDate() || (b.updatedAt?.toDate() || new Date(0));
                 return timeB.getTime() - timeA.getTime();
