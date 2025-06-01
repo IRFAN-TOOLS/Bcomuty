@@ -29,7 +29,8 @@ import {
     deleteDoc,
     increment 
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+// Firebase Storage imports are no longer needed for image uploads to imgbb
+// import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // Import icons from lucide-react
 import { 
@@ -41,7 +42,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
     apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", 
     authDomain: "bgune---community.firebaseapp.com",
     projectId: "bgune---community",
-    storageBucket: "bgune---community.appspot.com",
+    storageBucket: "bgune---community.appspot.com", // Still needed for project config, but not for direct file uploads
     messagingSenderId: "749511144215",
     appId: "1:749511144215:web:dcf13c4d59dc705d4f7d52",
     measurementId: "G-5XRSG2H5SV" 
@@ -53,9 +54,12 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'bgune-komunitas-app-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
+// const storage = getStorage(app); // Firebase Storage is no longer used for image uploads
 
 const provider = new GoogleAuthProvider();
+
+// imgbb API Key
+const IMGBB_API_KEY = "7d691450cb6b74c60ab68a35b8ac1b89";
 
 // Helper function to get user ID
 const getCurrentUserId = () => auth.currentUser?.uid || null;
@@ -148,6 +152,7 @@ const sendNotification = async (recipientId, type, senderId, postId = null, comm
             postId: postId,
             commentId: commentId
         });
+        console.log("Notification sent successfully to:", recipientId, "Type:", type);
     } catch (error) {
         console.error("Error sending notification:", error);
     }
@@ -443,41 +448,92 @@ function ProfileSetup({ user, onProfileComplete }) {
         let photoURLToSave = user.photoURL;
 
         if (photoFile) {
-            const photoRef = ref(storage, `profile_photos/${user.uid}/${Date.now()}_${photoFile.name}`);
-            try {
-                const snapshot = await uploadBytes(photoRef, photoFile);
-                photoURLToSave = await getDownloadURL(snapshot.ref);
-            } catch (uploadError) {
-                console.error("Error uploading photo for ProfileSetup:", uploadError);
-                setError(`Gagal mengunggah foto profil: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
-                setIsSaving(false);
-                return;
-            }
-        }
-        
-        const userDocRef = doc(db, getCollectionPath('profiles', true), user.uid);
-        const profileData = {
-            uid: user.uid,
-            displayName: displayName.trim(),
-            email: user.email, 
-            photoURL: photoURLToSave,
-            bio: bio.trim(),
-            createdAt: user.createdAt || serverTimestamp(), 
-            updatedAt: serverTimestamp(),
-            isOnline: true, 
-            lastActive: serverTimestamp(),
-            followersCount: 0, 
-            followingCount: 0  
-        };
+            // Convert file to base64 for imgbb upload
+            const reader = new FileReader();
+            reader.readAsDataURL(photoFile);
+            reader.onloadend = async () => {
+                const base64data = reader.result.split(',')[1]; // Get base64 string without data:image/png;base64, prefix
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('image', base64data);
+                    
+                    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const result = await response.json();
 
-        try {
-            await setDoc(userDocRef, profileData, { merge: true });
-            onProfileComplete(profileData); 
-        } catch (saveError) {
-            console.error("Error saving profile:", saveError);
-            setError("Gagal menyimpan profil. Coba lagi.");
-        } finally {
-            setIsSaving(false);
+                    if (result.success) {
+                        photoURLToSave = result.data.url;
+                        console.log("Photo URL from imgbb (ProfileSetup):", photoURLToSave); // Debugging log
+                    } else {
+                        throw new Error(result.error?.message || "Gagal mengunggah foto ke imgbb.");
+                    }
+                } catch (uploadError) {
+                    console.error("Error uploading photo to imgbb for ProfileSetup:", uploadError);
+                    setError(`Gagal mengunggah foto profil: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
+                    setIsSaving(false);
+                    return;
+                }
+
+                // Save profile data to Firestore
+                const userDocRef = doc(db, getCollectionPath('profiles', true), user.uid);
+                const profileData = {
+                    uid: user.uid,
+                    displayName: displayName.trim(),
+                    email: user.email, 
+                    photoURL: photoURLToSave,
+                    bio: bio.trim(),
+                    createdAt: user.createdAt || serverTimestamp(), 
+                    updatedAt: serverTimestamp(),
+                    isOnline: true, 
+                    lastActive: serverTimestamp(),
+                    followersCount: 0, 
+                    followingCount: 0  
+                };
+
+                try {
+                    await setDoc(userDocRef, profileData, { merge: true });
+                    onProfileComplete(profileData); 
+                } catch (saveError) {
+                    console.error("Error saving profile:", saveError);
+                    setError("Gagal menyimpan profil. Coba lagi.");
+                } finally {
+                    setIsSaving(false);
+                }
+            };
+            reader.onerror = (error) => {
+                console.error("Error reading file:", error);
+                setError("Gagal membaca file foto.");
+                setIsSaving(false);
+            };
+        } else {
+            // If no new photo file, just save profile data
+            const userDocRef = doc(db, getCollectionPath('profiles', true), user.uid);
+            const profileData = {
+                uid: user.uid,
+                displayName: displayName.trim(),
+                email: user.email, 
+                photoURL: photoURLToSave, // Will be existing photoURL
+                bio: bio.trim(),
+                createdAt: user.createdAt || serverTimestamp(), 
+                updatedAt: serverTimestamp(),
+                isOnline: true, 
+                lastActive: serverTimestamp(),
+                followersCount: 0, 
+                followingCount: 0  
+            };
+
+            try {
+                await setDoc(userDocRef, profileData, { merge: true });
+                onProfileComplete(profileData); 
+            } catch (saveError) {
+                console.error("Error saving profile:", saveError);
+                setError("Gagal menyimpan profil. Coba lagi.");
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -489,7 +545,15 @@ function ProfileSetup({ user, onProfileComplete }) {
                 {error && <p className="mb-4 text-sm text-red-600 bg-red-100 p-3 rounded-md text-center">{error}</p>}
 
                 <div className="mb-6 text-center">
-                    <img src={photoPreview} alt="Profile Preview" className="w-36 h-36 rounded-full mx-auto object-cover border-4 border-blue-300 shadow-md" />
+                    <img 
+                        src={photoPreview} 
+                        alt="Profile Preview" 
+                        className="w-36 h-36 rounded-full mx-auto object-cover border-4 border-blue-300 shadow-md" 
+                        onError={(e) => { 
+                            console.error("Gagal memuat foto profil:", e.target.src, e); 
+                            e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(user.displayName || 'P').charAt(0)}`; 
+                        }}
+                    />
                     <input type="file" id="photoUpload" onChange={handlePhotoChange} accept="image/jpeg, image/png" className="hidden" />
                     <label htmlFor="photoUpload" className="mt-3 inline-block bg-blue-500 hover:bg-blue-600 text-white text-sm py-2.5 px-5 rounded-lg cursor-pointer transition duration-150 shadow hover:shadow-md">
                         Ganti Foto
@@ -656,8 +720,9 @@ function CreatePostModal({ currentUser, onClose }) {
                 setError("Format gambar tidak didukung (hanya JPG, PNG, GIF).");
                 return;
             }
+            setError('');
             setImageFile(file);
-            setImagePreview(URL.createObjectURL(file));
+            setPhotoPreview(URL.createObjectURL(file)); // Use photoPreview for image preview
             e.target.value = null; 
         }
     };
@@ -668,9 +733,9 @@ function CreatePostModal({ currentUser, onClose }) {
     };
 
     const getYoutubeEmbedUrl = (url) => {
-        if (!isValidYoutubeUrl(url)) return null;
-        const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const match = url.match(youtubeRegex);
+        return match ? `https://www.youtube.com/embed/${match[4]}` : null;
     };
 
 
@@ -694,39 +759,82 @@ function CreatePostModal({ currentUser, onClose }) {
 
         setIsPosting(true);
         let imageUrlToStore = '';
-        let imageStoragePath = ''; 
+        
         if (imageFile) {
-            imageStoragePath = `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
-            const imageRef = ref(storage, imageStoragePath);
-            try {
-                const snapshot = await uploadBytes(imageRef, imageFile);
-                imageUrlToStore = await getDownloadURL(snapshot.ref);
-            } catch (uploadError) {
-                console.error("Error uploading image for post:", uploadError);
-                setError(`Gagal mengunggah gambar: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
-                setIsPosting(false);
-                return;
-            }
-        }
+            // Convert image file to base64 for imgbb upload
+            const reader = new FileReader();
+            reader.readAsDataURL(imageFile);
+            reader.onloadend = async () => {
+                const base64data = reader.result.split(',')[1]; // Get base64 string without data:image/png;base64, prefix
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('image', base64data);
+                    
+                    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const result = await response.json();
 
-        try {
-            const postsCollectionRef = collection(db, getCollectionPath('posts', true));
-            await addDoc(postsCollectionRef, {
-                userId: currentUser.uid,
-                text: text.trim(),
-                imageUrl: imageUrlToStore,
-                imageStoragePath: imageStoragePath, 
-                videoUrl: finalVideoUrl,
-                createdAt: serverTimestamp(),
-                likes: [],
-                commentsCount: 0,
-            });
-            onClose(); 
-        } catch (postError) {
-            console.error("Error creating post:", postError);
-            setError("Gagal membuat postingan. Coba lagi.");
-        } finally {
-            setIsPosting(false);
+                    if (result.success) {
+                        imageUrlToStore = result.data.url;
+                        console.log("Image URL from imgbb (CreatePostModal):", imageUrlToStore); // Debugging log
+                    } else {
+                        throw new Error(result.error?.message || "Gagal mengunggah gambar ke imgbb.");
+                    }
+                } catch (uploadError) {
+                    console.error("Error uploading image for post to imgbb:", uploadError);
+                    setError(`Gagal mengunggah gambar: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
+                    setIsPosting(false);
+                    return;
+                }
+
+                // Save post data to Firestore
+                try {
+                    const postsCollectionRef = collection(db, getCollectionPath('posts', true));
+                    await addDoc(postsCollectionRef, {
+                        userId: currentUser.uid,
+                        text: text.trim(),
+                        imageUrl: imageUrlToStore,
+                        videoUrl: finalVideoUrl,
+                        createdAt: serverTimestamp(),
+                        likes: [],
+                        commentsCount: 0,
+                    });
+                    onClose(); 
+                } catch (postError) {
+                    console.error("Error creating post:", postError);
+                    setError("Gagal membuat postingan. Coba lagi.");
+                } finally {
+                    setIsPosting(false);
+                }
+            };
+            reader.onerror = (error) => {
+                console.error("Error reading file:", error);
+                setError("Gagal membaca file gambar.");
+                setIsPosting(false);
+            };
+        } else {
+            // If no image file, just save post data
+            try {
+                const postsCollectionRef = collection(db, getCollectionPath('posts', true));
+                await addDoc(postsCollectionRef, {
+                    userId: currentUser.uid,
+                    text: text.trim(),
+                    imageUrl: imageUrlToStore, // Will be empty string
+                    videoUrl: finalVideoUrl,
+                    createdAt: serverTimestamp(),
+                    likes: [],
+                    commentsCount: 0,
+                });
+                onClose(); 
+            } catch (postError) {
+                console.error("Error creating post:", postError);
+                setError("Gagal membuat postingan. Coba lagi.");
+            } finally {
+                setIsPosting(false);
+            }
         }
     };
     
@@ -795,7 +903,8 @@ function CreatePostModal({ currentUser, onClose }) {
 function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     const [text, setText] = useState(post.text);
     const [imageFile, setImageFile] = useState(null);
-    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? (post.videoUrl.includes("http://www.youtube.com/embed/") ? `https://www.youtube.com/watch?v=${post.videoUrl.split('/').pop()}` : post.videoUrl) : ''); 
+    // Corrected YouTube URL initialization
+    const [videoUrl, setVideoUrl] = useState(post.videoUrl ? (post.videoUrl.includes("youtube.com/embed/") ? post.videoUrl.replace("https://www.youtube.com/embed/", "https://www.youtube.com/watch?v=") : post.videoUrl) : ''); 
     const [imagePreview, setImagePreview] = useState(post.imageUrl || null);
     const [isUpdating, setIsUpdating] = useState(false);
     const [error, setError] = useState('');
@@ -825,9 +934,9 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
     };
 
     const getYoutubeEmbedUrl = (url) => {
-        if (!isValidYoutubeUrl(url)) return null;
-        const videoIdMatch = url.match(/([a-zA-Z0-9_-]{11})/);
-        return videoIdMatch ? `https://www.youtube.com/embed/${videoIdMatch[0]}` : null;
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const match = url.match(youtubeRegex);
+        return match ? `https://www.youtube.com/embed/${match[4]}` : null;
     };
 
     const handleSubmit = async (e) => {
@@ -850,59 +959,98 @@ function EditPostModal({ post, currentUser, onClose, onPostUpdated }) {
 
         setIsUpdating(true);
         let imageUrlToStore = post.imageUrl;
-        let imageStoragePathToStore = post.imageStoragePath || '';
-
-
+        
         if (imageFile) { 
-            if (post.imageStoragePath) { 
+            // Convert image file to base64 for imgbb upload
+            const reader = new FileReader();
+            reader.readAsDataURL(imageFile);
+            reader.onloadend = async () => {
+                const base64data = reader.result.split(',')[1];
                 try {
-                    const oldImageRef = ref(storage, post.imageStoragePath);
-                    await deleteObject(oldImageRef);
-                } catch (deleteError) {
-                    console.warn("Gagal menghapus gambar lama dari storage:", deleteError);
+                    const formData = new FormData();
+                    formData.append('image', base64data);
+                    
+                    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        imageUrlToStore = result.data.url;
+                        console.log("Updated Image URL from imgbb (EditPostModal):", imageUrlToStore); // Debugging log
+                    } else {
+                        throw new Error(result.error?.message || "Gagal mengunggah gambar baru ke imgbb.");
+                    }
+                } catch (uploadError) {
+                    console.error("Error uploading new image for post to imgbb:", uploadError);
+                    setError(`Gagal mengunggah gambar baru: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
+                    setIsUpdating(false);
+                    return;
                 }
-            }
-            imageStoragePathToStore = `posts_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
-            const newImageRef = ref(storage, imageStoragePathToStore);
-            try {
-                const snapshot = await uploadBytes(newImageRef, imageFile);
-                imageUrlToStore = await getDownloadURL(snapshot.ref);
-            } catch (uploadError) {
-                console.error("Error uploading new image for post:", uploadError);
-                setError(`Gagal mengunggah gambar baru: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
+
+                // Update post data in Firestore
+                try {
+                    const postRef = doc(db, getCollectionPath('posts', true), post.id);
+                    await updateDoc(postRef, {
+                        text: text.trim(),
+                        imageUrl: imageUrlToStore,
+                        videoUrl: finalVideoUrl,
+                        updatedAt: serverTimestamp(),
+                    });
+                    if (onPostUpdated) onPostUpdated(); 
+                    onClose(); 
+                } catch (updateError) {
+                    console.error("Error updating post:", updateError);
+                    setError("Gagal memperbarui postingan. Coba lagi.");
+                } finally {
+                    setIsUpdating(false);
+                }
+            };
+            reader.onerror = (error) => {
+                console.error("Error reading file:", error);
+                setError("Gagal membaca file gambar.");
                 setIsUpdating(false);
-                return;
-            }
+            };
         } else if (imagePreview === null && post.imageUrl) { 
-            if (post.imageStoragePath) {
-                try {
-                    const imageToDeleteRef = ref(storage, post.imageStoragePath);
-                    await deleteObject(imageToDeleteRef);
-                } catch (deleteError) {
-                    console.warn("Could not delete old image from storage:", deleteError);
-                }
-            }
+            // If image was removed, clear the URL
             imageUrlToStore = '';
-            imageStoragePathToStore = '';
-        }
-
-
-        try {
-            const postRef = doc(db, getCollectionPath('posts', true), post.id);
-            await updateDoc(postRef, {
-                text: text.trim(),
-                imageUrl: imageUrlToStore,
-                imageStoragePath: imageStoragePathToStore,
-                videoUrl: finalVideoUrl,
-                updatedAt: serverTimestamp(),
-            });
-            if (onPostUpdated) onPostUpdated(); 
-            onClose(); 
-        } catch (updateError) {
-            console.error("Error updating post:", updateError);
-            setError("Gagal memperbarui postingan. Coba lagi.");
-        } finally {
-            setIsUpdating(false);
+            
+            // Update post data in Firestore
+            try {
+                const postRef = doc(db, getCollectionPath('posts', true), post.id);
+                await updateDoc(postRef, {
+                    text: text.trim(),
+                    imageUrl: imageUrlToStore,
+                    videoUrl: finalVideoUrl,
+                    updatedAt: serverTimestamp(),
+                });
+                if (onPostUpdated) onPostUpdated(); 
+                onClose(); 
+            } catch (updateError) {
+                console.error("Error updating post:", updateError);
+                setError("Gagal memperbarui postingan. Coba lagi.");
+            } finally {
+                setIsUpdating(false);
+            }
+        } else {
+            // No image change, just update text/video
+            try {
+                const postRef = doc(db, getCollectionPath('posts', true), post.id);
+                await updateDoc(postRef, {
+                    text: text.trim(),
+                    imageUrl: imageUrlToStore, // Keep existing URL
+                    videoUrl: finalVideoUrl,
+                    updatedAt: serverTimestamp(),
+                });
+                if (onPostUpdated) onPostUpdated(); 
+                onClose(); 
+            } catch (updateError) {
+                console.error("Error updating post:", updateError);
+                setError("Gagal memperbarui postingan. Coba lagi.");
+            } finally {
+                setIsUpdating(false);
+            }
         }
     };
     
@@ -1111,10 +1259,16 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfil
         setIsDeletingPost(true);
 
         try {
-            if (post.imageStoragePath) { 
-                const imageRef = ref(storage, post.imageStoragePath);
-                await deleteObject(imageRef);
-            }
+            // imgbb does not have a public API for deleting images by URL,
+            // so we only remove the reference from Firestore.
+            // If you need to delete from imgbb, you would need to store the deletehash
+            // returned by imgbb during upload and use it here.
+            // For now, we just remove the Firestore reference.
+            // if (post.imageStoragePath) { // This was for Firebase Storage
+            //     const imageRef = ref(storage, post.imageStoragePath);
+            //     await deleteObject(imageRef);
+            // }
+
             const commentsCollectionRef = collection(db, getCollectionPath('posts', true), post.id, 'comments');
             const commentsSnapshot = await getDocs(commentsCollectionRef);
             const deleteCommentPromises = commentsSnapshot.docs.map(commentDoc => deleteDoc(commentDoc.ref));
@@ -1161,6 +1315,10 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfil
                             alt={post.author?.displayName} 
                             className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm cursor-pointer" 
                             onClick={() => onViewProfile(post.userId)}
+                            onError={(e) => { 
+                                console.error("Gagal memuat foto profil penulis postingan:", e.target.src, e); 
+                                e.target.src=`https://placehold.co/40x40/E0E7FF/4F46E5?text=${(post.author?.displayName || 'U').charAt(0)}`; 
+                            }}
                         />
                         <div>
                             <p className="font-semibold text-slate-800 text-md cursor-pointer hover:text-blue-600" onClick={() => onViewProfile(post.userId)}>{post.author?.displayName || 'Pengguna Bgune'}</p>
@@ -1195,7 +1353,15 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfil
                     )}
                 </div>
                 {post.text && <p className="text-slate-700 mb-4 whitespace-pre-wrap text-base leading-relaxed">{post.text}</p>}
-                {post.imageUrl && <img src={post.imageUrl} alt="Postingan" className="rounded-lg w-full max-h-[60vh] object-contain mb-4 border border-slate-200 bg-slate-50" onError={(e) => e.target.style.display='none'} />}
+                {post.imageUrl && <img 
+                    src={post.imageUrl} 
+                    alt="Postingan" 
+                    className="rounded-lg w-full max-h-[60vh] object-contain mb-4 border border-slate-200 bg-slate-50" 
+                    onError={(e) => { 
+                        console.error("Gagal memuat gambar postingan:", e.target.src, e); 
+                        e.target.src = 'https://placehold.co/600x400/E0E7FF/4F46E5?text=Gambar+Tidak+Tersedia'; 
+                    }} 
+                />}
                 {post.videoUrl && (
                     <div className="aspect-video mb-4 rounded-lg overflow-hidden border border-slate-200">
                         <iframe 
@@ -1233,7 +1399,15 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfil
             {showComments && (
                 <div className="px-4 py-4 border-t border-slate-200 bg-slate-50">
                     <form onSubmit={handleAddComment} className="flex items-center space-x-2 mb-4">
-                        <img src={currentUser.photoURL || `https://placehold.co/32x32/E0E7FF/4F46E5?text=${currentUser.displayName.charAt(0)}`} alt="Anda" className="w-9 h-9 rounded-full object-cover shadow-sm"/>
+                        <img 
+                            src={currentUser.photoURL || `https://placehold.co/32x32/E0E7FF/4F46E5?text=${currentUser.displayName.charAt(0)}`} 
+                            alt="Anda" 
+                            className="w-9 h-9 rounded-full object-cover shadow-sm"
+                            onError={(e) => { 
+                                console.error("Gagal memuat foto profil Anda (komentar):", e.target.src, e); 
+                                e.target.src=`https://placehold.co/32x32/E0E7FF/4F46E5?text=${currentUser.displayName.charAt(0)}`; 
+                            }}
+                        />
                         <input 
                             type="text" 
                             value={newComment} 
@@ -1254,6 +1428,10 @@ function PostCard({ post, currentUser, onPostEdited, onPostDeleted, onViewProfil
                                     alt={comment.author?.displayName} 
                                     className="w-9 h-9 rounded-full object-cover shadow-sm cursor-pointer"
                                     onClick={() => onViewProfile(comment.userId)}
+                                    onError={(e) => { 
+                                        console.error("Gagal memuat foto profil pengomentar:", e.target.src, e); 
+                                        e.target.src=`https://placehold.co/32x32/CBD5E1/475569?text=A`; 
+                                    }}
                                 />
                                 <div className="bg-slate-100 p-2.5 rounded-lg flex-grow shadow-sm">
                                     <p className="font-semibold text-sm text-slate-800 cursor-pointer hover:text-blue-600" onClick={() => onViewProfile(comment.userId)}>{comment.author?.displayName}</p>
@@ -1415,7 +1593,15 @@ function ChatList({ currentUser, onSelectChat, onFindFriends, onOpenAIChat }) {
                             photoURL: chatItem.otherUserPhotoURL
                         })}
                     >
-                        <img src={chatItem.otherUserPhotoURL || `https://placehold.co/48x48/E0E7FF/4F46E5?text=${chatItem.otherUserName.charAt(0)}`} alt={chatItem.otherUserName} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full mr-3 sm:mr-4 object-cover shadow-sm" />
+                        <img 
+                            src={chatItem.otherUserPhotoURL || `https://placehold.co/48x48/E0E7FF/4F46E5?text=${chatItem.otherUserName.charAt(0)}`} 
+                            alt={chatItem.otherUserName} 
+                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-full mr-3 sm:mr-4 object-cover shadow-sm" 
+                            onError={(e) => { 
+                                console.error("Gagal memuat foto profil chat:", e.target.src, e); 
+                                e.target.src=`https://placehold.co/48x48/E0E7FF/4F46E5?text=${chatItem.otherUserName.charAt(0)}`; 
+                            }}
+                        />
                         <div className="flex-grow overflow-hidden">
                             <div className="flex items-center justify-between">
                                 <p className={`font-semibold text-slate-800 text-md truncate ${chatItem.unreadCount > 0 ? 'font-bold' : ''}`}>{chatItem.otherUserName}</p>
@@ -1629,7 +1815,15 @@ function ChatWindow({ chat, currentUser, onBack }) {
                 <button onClick={onBack} className="mr-3 text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-slate-100 transition">
                     <ArrowLeft size={22} />
                 </button>
-                <img src={chat.otherUserPhotoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${chat.otherUserName.charAt(0)}`} alt={chat.otherUserName} className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" />
+                <img 
+                    src={chat.otherUserPhotoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${chat.otherUserName.charAt(0)}`} 
+                    alt={chat.otherUserName} 
+                    className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" 
+                    onError={(e) => { 
+                        console.error("Gagal memuat foto profil chat:", e.target.src, e); 
+                        e.target.src=`https://placehold.co/40x40/E0E7FF/4F46E5?text=${chat.otherUserName.charAt(0)}`; 
+                    }}
+                />
                 <div>
                     <h2 className="font-semibold text-slate-800 text-lg">{chat.otherUserName}</h2>
                     <p className="text-xs text-slate-500">{isRemoteTyping ? "Sedang mengetik..." : onlineStatusText}</p>
@@ -1705,6 +1899,10 @@ const MessageBubble = React.memo(({ message, isCurrentUser, currentUserPhotoURL,
                     src={otherUserPhotoURL || `https://placehold.co/24x24/CBD5E1/475569?text=O`} 
                     alt="other user" 
                     className="w-6 h-6 rounded-full mr-2 mb-1 shadow-sm object-cover"
+                    onError={(e) => { 
+                        console.error("Gagal memuat foto profil pengirim pesan:", e.target.src, e); 
+                        e.target.src=`https://placehold.co/24x24/CBD5E1/475569?text=O`; 
+                    }}
                 />
             )}
             <div 
@@ -1736,6 +1934,10 @@ const MessageBubble = React.memo(({ message, isCurrentUser, currentUserPhotoURL,
                     src={currentUserPhotoURL || `https://placehold.co/24x24/E0E7FF/4F46E5?text=M`} 
                     alt="current user" 
                     className="w-6 h-6 rounded-full ml-2 mb-1 shadow-sm object-cover"
+                    onError={(e) => { 
+                        console.error("Gagal memuat foto profil Anda (pesan):", e.target.src, e); 
+                        e.target.src=`https://placehold.co/24x24/E0E7FF/4F46E5?text=M`; 
+                    }}
                 />
             )}
         </div>
@@ -1880,7 +2082,15 @@ function AIChatWindow({ chat, currentUser, onBack }) {
                 <button onClick={onBack} className="mr-3 text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-slate-100 transition">
                     <ArrowLeft size={22} />
                 </button>
-                <img src={chat.otherUserPhotoURL} alt={chat.otherUserName} className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" />
+                <img 
+                    src={chat.otherUserPhotoURL} 
+                    alt={chat.otherUserName} 
+                    className="w-10 h-10 rounded-full mr-3 object-cover shadow-sm" 
+                    onError={(e) => { 
+                        console.error("Gagal memuat foto profil AI:", e.target.src, e); 
+                        e.target.src=`https://placehold.co/40x40/E0E7FF/4F46E5?text=AI`; 
+                    }}
+                />
                 <div>
                     <h2 className="font-semibold text-slate-800 text-lg">{chat.otherUserName}</h2>
                     <p className="text-xs text-slate-500">{isTyping ? "AI sedang mengetik..." : "Online"}</p>
@@ -2016,7 +2226,15 @@ function FindFriendsPage({ currentUser, onStartChat, onBack, onViewProfile }) {
                 {filteredUsers.map(userItem => ( 
                     <div key={userItem.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-slate-200">
                         <div className="flex items-center overflow-hidden cursor-pointer" onClick={() => onViewProfile(userItem.uid)}>
-                            <img src={userItem.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${userItem.displayName.charAt(0)}`} alt={userItem.displayName} className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" />
+                            <img 
+                                src={userItem.photoURL || `https://placehold.co/40x40/E0E7FF/4F46E5?text=${userItem.displayName.charAt(0)}`} 
+                                alt={userItem.displayName} 
+                                className="w-11 h-11 rounded-full mr-3 object-cover shadow-sm" 
+                                onError={(e) => { 
+                                    console.error("Gagal memuat foto profil teman:", e.target.src, e); 
+                                    e.target.src=`https://placehold.co/40x40/E0E7FF/4F46E5?text=${userItem.displayName.charAt(0)}`; 
+                                }}
+                            />
                             <div className="overflow-hidden">
                                 <p className="font-semibold text-slate-700 truncate">{userItem.displayName}</p>
                                 <p className="text-sm text-slate-500 truncate">{userItem.bio?.substring(0,35)}{userItem.bio?.length > 35 ? '...' : ''}</p>
@@ -2052,6 +2270,7 @@ function NotificationsPage({ currentUser, onViewProfile }) {
         );
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
+            console.log("Fetching notifications..."); // Debugging log
             const notificationsDataPromises = snapshot.docs.map(async (docSnap) => {
                 const notif = { id: docSnap.id, ...docSnap.data() };
                 if (notif.senderId) {
@@ -2063,6 +2282,7 @@ function NotificationsPage({ currentUser, onViewProfile }) {
             const notificationsList = await Promise.all(notificationsDataPromises);
             setNotifications(notificationsList);
             setLoading(false);
+            console.log("Notifications loaded:", notificationsList); // Debugging log
         }, (err) => {
             console.error("Error fetching notifications:", err);
             setError("Gagal memuat notifikasi.");
@@ -2076,6 +2296,7 @@ function NotificationsPage({ currentUser, onViewProfile }) {
             await updateDoc(doc(db, getCollectionPath('notifications', true), notificationId), {
                 isRead: true
             });
+            console.log("Notification marked as read:", notificationId); // Debugging log
         } catch (error) {
             console.error("Error marking notification as read:", error);
         }
@@ -2119,7 +2340,15 @@ function NotificationsPage({ currentUser, onViewProfile }) {
                         onClick={() => handleNotificationClick(notification)}
                     >
                         <div className="flex-shrink-0 mr-3">
-                            <img src={notification.sender?.photoURL || `https://placehold.co/32x32/CBD5E1/475569?text=U`} alt={notification.sender?.displayName} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                            <img 
+                                src={notification.sender?.photoURL || `https://placehold.co/32x32/CBD5E1/475569?text=U`} 
+                                alt={notification.sender?.displayName} 
+                                className="w-10 h-10 rounded-full object-cover shadow-sm" 
+                                onError={(e) => { 
+                                    console.error("Gagal memuat foto profil pengirim notifikasi:", e.target.src, e); 
+                                    e.target.src=`https://placehold.co/32x32/CBD5E1/475569?text=U`; 
+                                }}
+                            />
                         </div>
                         <div className="flex-grow">
                             <p className="text-slate-800 font-medium text-base leading-snug">
@@ -2236,34 +2465,78 @@ function ProfilePage({ currentUser, onLogout, onViewProfile }) {
         let newPhotoURL = internalCurrentUser.photoURL;
 
         if (photoFile) {
-            const photoRef = ref(storage, `profile_photos/${internalCurrentUser.uid}/${Date.now()}_${photoFile.name}`);
-            try {
-                const snapshot = await uploadBytes(photoRef, photoFile);
-                newPhotoURL = await getDownloadURL(snapshot.ref);
-            } catch (uploadError) {
-                console.error("Error uploading new photo for ProfilePage:", uploadError);
-                setError(`Gagal mengunggah foto baru: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
-                setIsSaving(false);
-                return;
-            }
-        }
+            // Convert file to base64 for imgbb upload
+            const reader = new FileReader();
+            reader.readAsDataURL(photoFile);
+            reader.onloadend = async () => {
+                const base64data = reader.result.split(',')[1];
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('image', base64data);
+                    
+                    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const result = await response.json();
 
-        const userDocRef = doc(db, getCollectionPath('profiles', true), internalCurrentUser.uid);
-        const updatedProfileData = {
-            displayName: displayName.trim(),
-            bio: bio.trim(),
-            photoURL: newPhotoURL,
-            updatedAt: serverTimestamp()
-        };
-        try {
-            await updateDoc(userDocRef, updatedProfileData);
-            setInternalCurrentUser(prev => ({...prev, ...updatedProfileData})); 
-            setIsEditing(false);
-        } catch (saveError) {
-            console.error("Error updating profile:", saveError);
-            setError("Gagal memperbarui profil. Coba lagi.");
-        } finally {
-            setIsSaving(false);
+                    if (result.success) {
+                        newPhotoURL = result.data.url;
+                        console.log("New Photo URL from imgbb (ProfilePage):", newPhotoURL); // Debugging log
+                    } else {
+                        throw new Error(result.error?.message || "Gagal mengunggah foto ke imgbb.");
+                    }
+                } catch (uploadError) {
+                    console.error("Error uploading new photo for ProfilePage:", uploadError);
+                    setError(`Gagal mengunggah foto baru: ${uploadError.message || 'Terjadi kesalahan tidak dikenal.'}`);
+                    setIsSaving(false);
+                    return;
+                }
+
+                // Update profile data in Firestore
+                const userDocRef = doc(db, getCollectionPath('profiles', true), internalCurrentUser.uid);
+                const updatedProfileData = {
+                    displayName: displayName.trim(),
+                    bio: bio.trim(),
+                    photoURL: newPhotoURL,
+                    updatedAt: serverTimestamp()
+                };
+                try {
+                    await updateDoc(userDocRef, updatedProfileData);
+                    setInternalCurrentUser(prev => ({...prev, ...updatedProfileData})); 
+                    setIsEditing(false);
+                } catch (saveError) {
+                    console.error("Error updating profile:", saveError);
+                    setError("Gagal memperbarui profil. Coba lagi.");
+                } finally {
+                    setIsSaving(false);
+                }
+            };
+            reader.onerror = (error) => {
+                console.error("Error reading file:", error);
+                setError("Gagal membaca file foto.");
+                setIsSaving(false);
+            };
+        } else {
+            // If no new photo file, just update text bio/display name
+            const userDocRef = doc(db, getCollectionPath('profiles', true), internalCurrentUser.uid);
+            const updatedProfileData = {
+                displayName: displayName.trim(),
+                bio: bio.trim(),
+                photoURL: newPhotoURL, // Keep existing photoURL
+                updatedAt: serverTimestamp()
+            };
+            try {
+                await updateDoc(userDocRef, updatedProfileData);
+                setInternalCurrentUser(prev => ({...prev, ...updatedProfileData})); 
+                setIsEditing(false);
+            } catch (saveError) {
+                console.error("Error updating profile:", saveError);
+                setError("Gagal memperbarui profil. Coba lagi.");
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -2280,7 +2553,10 @@ function ProfilePage({ currentUser, onLogout, onViewProfile }) {
                             src={isEditing ? photoPreview : internalCurrentUser.photoURL} 
                             alt="Foto Profil" 
                             className="w-32 h-32 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-blue-500 shadow-lg"
-                            onError={(e) => e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(internalCurrentUser.displayName || 'P').charAt(0)}`}
+                            onError={(e) => { 
+                                console.error("Gagal memuat foto profil:", e.target.src, e); 
+                                e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(internalCurrentUser.displayName || 'P').charAt(0)}`; 
+                            }}
                         />
                         {isEditing && (
                             <>
@@ -2516,7 +2792,10 @@ function OtherProfilePage({ currentUser, otherUserId, onBack, onStartChat }) {
                             src={otherUser.photoURL || `https://placehold.co/150x150/E0E7FF/4F46E5?text=${(otherUser.displayName || 'P').charAt(0)}`} 
                             alt="Foto Profil" 
                             className="w-32 h-32 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-blue-500 shadow-lg"
-                            onError={(e) => e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(otherUser.displayName || 'P').charAt(0)}`}
+                            onError={(e) => { 
+                                console.error("Gagal memuat foto profil pengguna lain:", e.target.src, e); 
+                                e.target.src=`https://placehold.co/150x150/E0E7FF/4F46E5?text=${(otherUser.displayName || 'P').charAt(0)}`; 
+                            }}
                         />
                     </div>
 
