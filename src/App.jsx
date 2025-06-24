@@ -28,7 +28,7 @@ const firebaseConfig = {
 };
 
 // --- DAFTAR AKUN DEVELOPER ---
-const DEV_ACCOUNTS = ['bgune@admin.com', 'irham.andika@example.com']; // Tambahkan email developer di sini
+const DEV_ACCOUNTS = ['irhamdika00@gmail.com', 'irham.andika@example.com']; // Tambahkan email developer di sini
 
 // --- INISIALISASI FIREBASE ---
 const app = initializeApp(firebaseConfig);
@@ -231,8 +231,6 @@ const AppProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
 
-    const { videos } = useContext(DevContext);
-
     const contextValue = useMemo(() => ({ level, track, subject }), [level, track, subject]);
     const addHistory = useCallback((item) => setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50)), [setHistory]);
     
@@ -243,27 +241,13 @@ const AppProvider = ({ children }) => {
         if (!isFromHistory) addHistory({ topic: searchTopic, level, track, subjectName: subject.name });
 
         const geminiPrompt = `Sebagai ahli materi pelajaran, buatkan ringkasan, materi lengkap (format Markdown bersih), dan 5 soal latihan pilihan ganda (A-E) dengan jawaban & penjelasan untuk topik '${searchTopic}' pelajaran '${subject.name}' tingkat ${level} ${track ? `jurusan ${track}`: ''}. Respons HANYA dalam format JSON: {"ringkasan": "...", "materi_lengkap": "...", "latihan_soal": [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]}`;
-
-        const findManagedVideo = (topic) => {
-            const keywords = topic.toLowerCase().split(' ');
-            const foundVideo = videos.find(video => {
-                const title = video.title.toLowerCase();
-                return keywords.some(kw => title.includes(kw));
-            });
-            if (foundVideo) {
-                return {
-                    id: foundVideo.id,
-                    title: foundVideo.title,
-                    embedUrl: `https://www.youtube.com/embed/${foundVideo.id}`
-                };
-            }
-            return null;
-        };
+        
+        const youtubeSearchQuery = `${searchTopic} ${subject.name} pembahasan lengkap`;
 
         try {
             const [geminiData, videoData] = await Promise.all([
                 callGeminiAPI(geminiPrompt),
-                Promise.resolve(findManagedVideo(searchTopic))
+                callYouTubeAPI(youtubeSearchQuery) // Perubahan: Mencari video di YouTube
             ]);
             setLearningData({ topic: searchTopic, ...geminiData, video: videoData });
         } catch (err) {
@@ -272,7 +256,7 @@ const AppProvider = ({ children }) => {
         } finally {
             setIsLoading(false);
         }
-    }, [contextValue, addHistory, videos]);
+    }, [contextValue, addHistory]);
     
     const fetchBankSoal = useCallback(async (topic, count) => {
         if (!topic || !contextValue.level || !contextValue.subject || !count) { setError("Harap masukkan topik dan jumlah soal."); return; }
@@ -331,6 +315,34 @@ const callGeminiAPI = async (prompt) => {
     }
 };
 
+const callYouTubeAPI = async (query) => {
+    console.log("[API Call] Memanggil YouTube API untuk query:", query);
+    if (!YOUTUBE_API_KEY) {
+        console.warn("[API Warning] Kunci API YouTube tidak ada. Pencarian video dilewati.");
+        return null; // Tidak melempar error agar aplikasi tetap jalan
+    }
+    const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&maxResults=1&type=video&videoDuration=long`;
+    
+    try {
+        const response = await fetch(API_URL);
+        if (!response.ok) {
+            const errorBody = await response.json();
+            throw new Error(`Permintaan API YouTube gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`);
+        }
+        const result = await response.json();
+        const item = result.items?.[0];
+        if (!item) return null; // Tidak ada video yang ditemukan
+        
+        return {
+            id: item.id.videoId,
+            title: item.snippet.title,
+            embedUrl: `https://www.youtube.com/embed/${item.id.videoId}`
+        };
+    } catch (error) {
+        console.error("[API Exception] Terjadi kesalahan YouTube:", error);
+        return null; // Return null agar tidak menghentikan proses load materi
+    }
+};
 
 // --- KOMPONEN UTAMA APLIKASI ---
 export default function App() {
@@ -493,6 +505,9 @@ const LandingPage = () => {
 const DashboardPage = () => {
     const { setPage } = useContext(AppContext);
     const { user } = useContext(AuthContext);
+    const { videos } = useContext(DevContext);
+
+    const recommendedVideo = videos && videos.length > 0 ? videos[videos.length - 1] : null;
 
     return (
         <AnimatedScreen customKey="dashboard">
@@ -523,6 +538,25 @@ const DashboardPage = () => {
                     disabled={true}
                 />
             </div>
+            
+            {/* Perubahan: Menampilkan Video Rekomendasi di Dashboard */}
+            {recommendedVideo && (
+                <div className="mt-6">
+                    <InfoCard icon={<Video />} title="Video Rekomendasi Pilihan">
+                        <h3 className="text-lg font-semibold mb-3">{recommendedVideo.title}</h3>
+                        <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden shadow-lg">
+                            <iframe 
+                                src={`https://www.youtube.com/embed/${recommendedVideo.id}`} 
+                                title={recommendedVideo.title} 
+                                frameBorder="0" 
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                                allowFullScreen 
+                                className="w-full h-full">
+                            </iframe>
+                        </div>
+                    </InfoCard>
+                </div>
+            )}
             
             <div className="mt-6">
                 <InfoCard icon={<Info size={20}/>} title="Info & Pengembang">
@@ -613,7 +647,7 @@ const DeveloperDashboardPage = () => {
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <InfoCard icon={<Video />} title="Kelola Video Pembelajaran" className="lg:col-span-2">
+                <InfoCard icon={<Video />} title="Kelola Video Rekomendasi" className="lg:col-span-2">
                     <form onSubmit={handleAddVideo} className="flex gap-2 mb-4">
                         <input type="url" value={newVideoUrl} onChange={(e) => setNewVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="flex-grow p-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500 outline-none" required />
                         <button type="submit" className="p-3 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"><PlusCircle size={20} /></button>
@@ -664,6 +698,11 @@ const ChatAiPage = () => {
 
 const UpdateLogPage = () => {
     const updates = [
+        { version: "v2.3.0", date: "26 Juni 2025", changes: [
+            "Memperbaiki sistem video: Video pembelajaran kini dicari dari YouTube, dan video rekomendasi di Dashboard dikelola developer.",
+            "Menambahkan card Video Rekomendasi di Dashboard.",
+            "Logika `fetchLearningMaterial` diperbarui untuk memanggil YouTube API.",
+        ]},
         { version: "v2.2.0", date: "25 Juni 2025", changes: [
             "Implementasi Developer Dashboard untuk pengelolaan video.",
             "Desain ulang Landing Page, Dashboard Pelajar, dan Halaman Pengaturan.",
@@ -883,7 +922,7 @@ const LearningMaterialScreen = () => {
                         </div>
                     </InfoCard>
                 ) : (
-                    <InfoCard icon={<Youtube />} title="Video Pembelajaran"><p className="text-center text-slate-400 p-4">Guru AI tidak menemukan video yang dikelola developer untuk topik ini. Coba topik lain ya!</p></InfoCard>
+                    <InfoCard icon={<Youtube />} title="Video Pembelajaran"><p className="text-center text-slate-400 p-4">Guru AI tidak menemukan video pembelajaran yang relevan di YouTube untuk topik ini.</p></InfoCard>
                 )}
                 {ringkasan && <InfoCard icon={<Lightbulb />} title="Ringkasan"><p className="leading-relaxed">{ringkasan}</p></InfoCard>}
                 {materi_lengkap && <InfoCard icon={<BookOpen />} title="Materi Lengkap"><div className="prose dark:prose-invert max-w-none"><ReactMarkdown>{materi_lengkap}</ReactMarkdown></div></InfoCard>}
