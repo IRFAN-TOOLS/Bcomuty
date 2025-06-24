@@ -16,7 +16,7 @@ import ReactMarkdown from 'react-markdown';
 const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik"; // Kunci API Anda
 const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE"; // Kunci API Anda
 const PERNAH_MIKIR_CHANNEL_ID = "UC_Qc0st3N12HkP3y21pMUcw";
-const DEV_EMAIL = "irham.putra@bgune.com"; // Ganti dengan email developer
+const DEV_EMAIL = "irhamdika00@gmail.com"; // Ganti dengan email developer
 
 const firebaseConfig = {
     apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // Konfigurasi Firebase Anda
