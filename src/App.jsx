@@ -152,7 +152,74 @@ const AppProvider = ({ children }) => {
     const contextValue = useMemo(() => ({ level, track, subject }), [level, track, subject]);
     const addHistory = useCallback((item) => setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50)), [setHistory]);
 
-    const value = { page, setPage, screen, setScreen, level, setLevel, track, setTrack, subject, setSubject, learningData, setLearningData, recommendations, setRecommendations, fetchRecommendations, bankSoal, setBankSoal, isLoading, setIsLoading, error, setError, history, addHistory, loadingMessage, setLoadingMessage, isSidebarOpen, setSidebarOpen, contextValue };
+    // --- FUNGSI AKSI DIPINDAHKAN KE SINI ---
+    const fetchLearningMaterial = useCallback(async (searchTopic, isFromHistory = false) => {
+        console.log(`[Fetch Materi] Memulai untuk topik: "${searchTopic}"`);
+        if (!searchTopic || !contextValue.level || !contextValue.subject) { console.error("[Fetch Materi] Gagal: Konteks tidak lengkap."); return; }
+        
+        setIsLoading(true);
+        setLoadingMessage('Guru AI sedang menyiapkan materimu...');
+        setError(null);
+        setLearningData(null);
+        setPage('belajar');
+        setScreen('lesson');
+        
+        const { level, track, subject } = contextValue;
+        if (!isFromHistory) addHistory({ topic: searchTopic, level, track, subjectName: subject.name });
+
+        const geminiPrompt = `Sebagai ahli materi pelajaran, buatkan ringkasan, materi lengkap (format Markdown bersih), dan 5 soal latihan pilihan ganda (A-E) dengan jawaban & penjelasan untuk topik '${searchTopic}' pelajaran '${subject.name}' tingkat ${level} ${track ? `jurusan ${track}`: ''}. Respons HANYA dalam format JSON: {"ringkasan": "...", "materi_lengkap": "...", "latihan_soal": [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]}`;
+
+        try {
+            const [geminiData, videoData] = await Promise.all([
+                callGeminiAPI(geminiPrompt),
+                fetchRelevantLearningVideo(searchTopic, subject.name)
+            ]);
+
+            setLearningData({
+                topic: searchTopic,
+                ...geminiData,
+                video: videoData
+            });
+            console.log("[Fetch Materi] Sukses, data materi dan video diatur.");
+        } catch (err) {
+            console.error("[Fetch Materi] Error:", err);
+            setError(`Gagal memuat materi: ${err.message}. Coba lagi nanti.`);
+            setPage('dashboard');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [contextValue, addHistory, setHistory]);
+
+    const fetchBankSoal = useCallback(async (topic, count) => {
+        if (!topic || !contextValue.level || !contextValue.subject || !count) { setError("Harap masukkan topik dan jumlah soal."); return; }
+        setIsLoading(true); setLoadingMessage(`Guru AI sedang membuat ${count} soal...`); setError(null);
+        const { level, track, subject } = contextValue;
+        const prompt = `Buatkan ${count} soal pilihan ganda (A-E) tentang '${topic}' untuk pelajaran '${subject.name}' level ${level} ${track ? `jurusan ${track}` : ''}. Sertakan jawaban & penjelasan. Respons HANYA dalam format JSON array objek: [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]`;
+        try {
+            const soal = await callGeminiAPI(prompt);
+            setBankSoal(Array.isArray(soal) ? soal : []);
+            setPage('belajar'); setScreen('bankSoal');
+        } catch(err) { setError(`Gagal membuat bank soal: ${err.message}`); setPage('dashboard'); } finally { setIsLoading(false); }
+    }, [contextValue]);
+    
+    const fetchRecommendations = useCallback(async () => {
+        if (!contextValue.level || !contextValue.subject) return;
+        const { level, track, subject } = contextValue;
+        const prompt = `Berikan 5 rekomendasi topik menarik untuk mata pelajaran "${subject.name}" level ${level} ${track ? `jurusan ${track}`: ''}. Jawab HANYA dalam format JSON array string. Contoh: ["Topik 1", "Topik 2"]`;
+        try { 
+            const recs = await callGeminiAPI(prompt); 
+            setRecommendations(Array.isArray(recs) ? recs : []); 
+        } catch (err) { console.error("Gagal fetch rekomendasi:", err); }
+    }, [contextValue]);
+
+    // --- NILAI KONTEKS YANG LENGKAP ---
+    const value = { 
+        page, setPage, screen, setScreen, level, setLevel, track, setTrack, subject, setSubject, 
+        learningData, setLearningData, recommendations, setRecommendations, bankSoal, setBankSoal, 
+        isLoading, setIsLoading, error, setError, history, addHistory, 
+        loadingMessage, setLoadingMessage, isSidebarOpen, setSidebarOpen, contextValue,
+        fetchLearningMaterial, fetchBankSoal, fetchRecommendations 
+    };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
@@ -206,7 +273,6 @@ const fetchRelevantLearningVideo = async (topic, subject) => {
     console.log(`[YouTube API] Mencari video untuk: "${topic}"`);
     if (!YOUTUBE_API_KEY) { console.error("Kunci API YouTube belum diatur."); return null; }
     
-    // Query lebih spesifik untuk hasil yang lebih baik
     const searchQuery = `materi ${subject} ${topic} pembahasan lengkap kelas`;
     const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&maxResults=5&type=video&videoDuration=long&videoCategoryId=27&relevanceLanguage=id&key=${YOUTUBE_API_KEY}`;
     
@@ -216,7 +282,6 @@ const fetchRelevantLearningVideo = async (topic, subject) => {
         const data = await response.json();
 
         if (data.items && data.items.length > 0) {
-            // Pilih video pertama yang paling relevan
             const video = data.items[0];
             return {
                 id: video.id.videoId,
@@ -242,71 +307,6 @@ const fetchFunFact = async () => {
         return "Gagal memuat fakta menarik hari ini. Coba lagi nanti!";
     }
 };
-
-// --- LOGIKA INTI & FETCH DATA ---
-
-function useLearningActions() {
-    const { setIsLoading, setLoadingMessage, setError, setLearningData, addHistory, contextValue, setPage, setScreen, setBankSoal, setRecommendations } = useContext(AppContext);
-    
-    const fetchLearningMaterial = useCallback(async (searchTopic, isFromHistory = false) => {
-        console.log(`[Fetch Materi] Memulai untuk topik: "${searchTopic}"`);
-        if (!searchTopic || !contextValue.level || !contextValue.subject) { console.error("[Fetch Materi] Gagal: Konteks tidak lengkap."); return; }
-        
-        setIsLoading(true);
-        setLoadingMessage('Guru AI sedang menyiapkan materimu...');
-        setError(null);
-        setLearningData(null);
-        setPage('belajar');
-        setScreen('lesson');
-        
-        const { level, track, subject } = contextValue;
-        if (!isFromHistory) addHistory({ topic: searchTopic, level, track, subjectName: subject.name });
-
-        const geminiPrompt = `Sebagai ahli materi pelajaran, buatkan ringkasan, materi lengkap (format Markdown bersih), dan 5 soal latihan pilihan ganda (A-E) dengan jawaban & penjelasan untuk topik '${searchTopic}' pelajaran '${subject.name}' tingkat ${level} ${track ? `jurusan ${track}`: ''}. Respons HANYA dalam format JSON: {"ringkasan": "...", "materi_lengkap": "...", "latihan_soal": [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]}`;
-
-        try {
-            // Fetch material dan video secara paralel
-            const [geminiData, videoData] = await Promise.all([
-                callGeminiAPI(geminiPrompt),
-                fetchRelevantLearningVideo(searchTopic, subject.name)
-            ]);
-
-            setLearningData({
-                topic: searchTopic,
-                ...geminiData,
-                video: videoData // Simpan objek video
-            });
-            console.log("[Fetch Materi] Sukses, data materi dan video diatur.");
-        } catch (err) {
-            console.error("[Fetch Materi] Error:", err);
-            setError(`Gagal memuat materi: ${err.message}. Coba lagi nanti.`);
-            setPage('dashboard');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [contextValue, addHistory, setIsLoading, setLoadingMessage, setError, setLearningData, setPage, setScreen]);
-
-    const fetchBankSoal = useCallback(async (topic, count) => {
-        if (!topic || !contextValue.level || !contextValue.subject || !count) { setError("Harap masukkan topik dan jumlah soal."); return; }
-        setIsLoading(true); setLoadingMessage(`Guru AI sedang membuat ${count} soal...`); setError(null);
-        const { level, track, subject } = contextValue;
-        const prompt = `Buatkan ${count} soal pilihan ganda (A-E) tentang '${topic}' untuk pelajaran '${subject.name}' level ${level} ${track ? `jurusan ${track}` : ''}. Sertakan jawaban & penjelasan. Respons HANYA dalam format JSON array objek: [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]`;
-        try {
-            const soal = await callGeminiAPI(prompt);
-            setBankSoal(Array.isArray(soal) ? soal : []);
-            setPage('belajar'); setScreen('bankSoal');
-        } catch(err) { setError(`Gagal membuat bank soal: ${err.message}`); setPage('dashboard'); } finally { setIsLoading(false); }
-    }, [contextValue, setBankSoal, setError, setIsLoading, setLoadingMessage, setPage, setScreen]);
-    
-    const fetchRecommendations = useCallback(async () => {
-        if (!contextValue.level || !contextValue.subject) return;
-        const { level, track, subject } = contextValue;
-        const prompt = `Berikan 5 rekomendasi topik menarik untuk mata pelajaran "${subject.name}" level ${level} ${track ? `jurusan ${track}`: ''}. Jawab HANYA dalam format JSON array string. Contoh: ["Topik 1", "Topik 2"]`;
-        try { const recs = await callGeminiAPI(prompt); setRecommendations(Array.isArray(recs) ? recs : []); } catch (err) { console.error("Gagal fetch rekomendasi:", err); }
-    }, [contextValue, setRecommendations]);
-
-    return { fetchLearningMaterial, fetchBankSoal, fetchRecommendations };
-}
 
 
 // --- KOMPONEN UTAMA APLIKASI ---
@@ -600,7 +600,7 @@ const StudyStreakTracker = () => {
                 lastLogin: today
             }));
         }
-    }, []);
+    }, [streakData.lastLogin, setStreakData]);
 
     return (
         <div className="p-6 bg-purple-100 dark:bg-purple-900/50 rounded-xl flex flex-col items-center justify-center text-center h-full">
@@ -619,7 +619,6 @@ const PernahMikirSection = () => {
     useEffect(() => {
         setLoading(true);
         fetchVideosFromPernahMikir().then(data => {
-            // Ambil 3 video secara acak
             const shuffled = data.sort(() => 0.5 - Math.random());
             setVideos(shuffled.slice(0, 3));
             setLoading(false);
@@ -739,7 +738,7 @@ const BackButton = ({ onClick }) => <button onClick={onClick} className="flex it
 const InfoCard = ({ icon, title, children, className = '' }) => <div className={`bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md overflow-hidden ${className} animate-fadeInUp`}><div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">{icon && <div className="text-blue-500">{React.cloneElement(icon, { size: 24 })}</div>}<h2 className="text-xl font-bold">{title}</h2></div><div className="p-4 sm:p-6">{children}</div></div>;
 const ErrorMessage = ({ message }) => <div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-r-lg mt-4 w-full flex items-center gap-4"><AlertTriangle className="h-6 w-6 text-red-500" /><p className="font-bold">{message}</p></div>;
 
-const LevelSelectionScreen = () => { /* ... sama seperti sebelumnya, dengan styling baru */
+const LevelSelectionScreen = () => { 
     const { setScreen, setLevel, setPage } = useContext(AppContext);
     return (
         <AnimatedScreen customKey="level">
@@ -755,7 +754,7 @@ const LevelSelectionScreen = () => { /* ... sama seperti sebelumnya, dengan styl
         </AnimatedScreen>
     );
 };
-const TrackSelectionScreen = () => { /* ... sama seperti sebelumnya, dengan styling baru */ 
+const TrackSelectionScreen = () => { 
     const { setScreen, setTrack } = useContext(AppContext);
     return (
         <AnimatedScreen customKey="track">
@@ -769,7 +768,7 @@ const TrackSelectionScreen = () => { /* ... sama seperti sebelumnya, dengan styl
         </AnimatedScreen>
     );
 };
-const SubjectSelectionScreen = () => { /* ... sama seperti sebelumnya, dengan styling baru */
+const SubjectSelectionScreen = () => {
     const { level, track, setScreen, setSubject } = useContext(AppContext);
     const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects;
     const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection';
@@ -788,8 +787,7 @@ const SubjectSelectionScreen = () => { /* ... sama seperti sebelumnya, dengan st
 };
 const DynamicIcon = ({ name, ...props }) => { const IconComponent = iconMap[name]; return IconComponent ? <IconComponent {...props} /> : <HelpCircle {...props} />; };
 const SubjectDashboardScreen = () => {
-    const { subject, recommendations, error, setError, history, setScreen } = useContext(AppContext);
-    const { fetchLearningMaterial, fetchRecommendations } = useLearningActions();
+    const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext);
     const [inputValue, setInputValue] = useState('');
     const [activeTab, setActiveTab] = useState('rekomendasi');
 
@@ -821,8 +819,7 @@ const SubjectDashboardScreen = () => {
     );
 };
 const BankSoalGenerator = () => {
-    const { setError } = useContext(AppContext);
-    const { fetchBankSoal } = useLearningActions();
+    const { setError, fetchBankSoal } = useContext(AppContext);
     const [topic, setTopic] = useState('');
     const [count, setCount] = useState(5);
     const handleSubmit = (e) => { e.preventDefault(); if (!topic.trim()) { setError("Topik soal tidak boleh kosong."); return; } if (count < 1 || count > 20) { setError("Jumlah soal harus antara 1 dan 20."); return; } setError(null); fetchBankSoal(topic, count); };
@@ -876,7 +873,7 @@ const BankSoalScreen = () => {
         </AnimatedScreen>
     );
 };
-const QuizPlayer = ({ questions }) => { /* ... sama seperti sebelumnya, dengan styling baru */
+const QuizPlayer = ({ questions }) => {
     const [answers, setAnswers] = useState({});
     const [isSubmitted, setSubmitted] = useState(false);
     if (!questions || !Array.isArray(questions) || questions.length === 0) return <p>Soal latihan tidak tersedia.</p>;
