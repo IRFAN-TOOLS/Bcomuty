@@ -16,7 +16,7 @@ import ReactMarkdown from 'react-markdown';
 // --- KONFIGURASI PENTING & API KEYS ---
 const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik"; // Kunci API Anda
 const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE"; // Kunci API Anda
-const DEV_EMAIL = "bgune@admin.com"; // Email khusus untuk akses developer
+const DEV_EMAIL = "irhamdika00@gmail.com"; // Email khusus untuk akses developer
 
 const firebaseConfig = {
     apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // Konfigurasi Firebase Anda
