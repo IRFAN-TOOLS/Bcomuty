@@ -9,7 +9,7 @@ import {
     BrainCircuit, History, BookMarked, Github, Instagram, CalendarDays, Sun, Moon, LogOut, 
     User, Settings, Menu, Info, Newspaper, LayoutDashboard, Volume2, VolumeX, Contrast, 
     Wind, Text, Palette, Shield, Target, Save, Users, UploadCloud, Trash2, Globe2, MessageSquare,
-    Check, Award, Star, EyeOff, WifiOff
+    Check, Award, Star, EyeOff, WifiOff, ArrowRight
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -158,22 +158,35 @@ const SettingsProvider = ({ children }) => {
 
 const AppProvider = ({ children }) => {
     const [page, setPage] = useState('dashboard');
-    const [screen, setScreen] = useState('levelSelection'); // For learning flow
+    const [screen, setScreen] = useState('levelSelection');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
     
-    // States for learning flow
     const [level, setLevel] = useState('');
     const [track, setTrack] = useState('');
     const [subject, setSubject] = useState(null);
+    const [learningData, setLearningData] = useState(null);
+    const [recommendations, setRecommendations] = useState([]);
+    const [bankSoal, setBankSoal] = useState([]);
+    const [history, setHistory] = useLocalStorage('bdukasi-expert-history-v6', []);
+    const [error, setError] = useState(null);
 
-    const value = { page, setPage, screen, setScreen, isLoading, setIsLoading, loadingMessage, setLoadingMessage, level, setLevel, track, setTrack, subject, setSubject };
+    const addHistory = useCallback((item) => {
+        setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50));
+    }, [setHistory]);
 
-    return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+    const contextValue = { 
+        page, setPage, screen, setScreen, isLoading, setIsLoading, loadingMessage, setLoadingMessage, 
+        level, setLevel, track, setTrack, subject, setSubject,
+        learningData, setLearningData, recommendations, setRecommendations, bankSoal, setBankSoal,
+        history, addHistory, error, setError,
+    };
+
+    return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
 };
 
 // --- FUNGSI API & UTILITIES ---
-const callGeminiAPI = async (prompt) => { /* ... (fungsi sama seperti sebelumnya) */ 
+const callGeminiAPI = async (prompt) => {
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { response_mime_type: "application/json" } };
     const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -183,6 +196,7 @@ const callGeminiAPI = async (prompt) => { /* ... (fungsi sama seperti sebelumnya
     if (!text) throw new Error("Respons AI tidak valid.");
     return JSON.parse(text.replace(/^```json\s*|```$/g, '').trim());
 };
+
 const getYoutubeVideoId = (url) => {
     try {
         const urlObj = new URL(url);
@@ -277,11 +291,15 @@ const LoadingScreen = ({ message, isInitial = false }) => (
 // --- HALAMAN-HALAMAN UTAMA (PAGES) ---
 const LandingPage = () => {
     const { loginWithGoogle } = useContext(AuthContext);
-    const [stats, setStats] = useState({ userCount: 1500, materialCount: 800 }); // Default stats
+    const [stats, setStats] = useState({ userCount: 1500, materialCount: 800 });
 
     useEffect(() => {
-        const unsub = onSnapshot(doc(db, "app_stats", "main"), (doc) => {
+        const unsub = onSnapshot(doc(db, "app_stats", "main"), 
+        (doc) => {
             if (doc.exists()) setStats(doc.data());
+        }, 
+        (error) => {
+            console.error("Error fetching public app stats:", error);
         });
         return () => unsub();
     }, []);
@@ -294,7 +312,6 @@ const LandingPage = () => {
 
     return (
         <div className="bg-slate-50 text-slate-800">
-            {/* Header */}
             <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md z-20">
                 <div className="container mx-auto px-6 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-2 font-bold text-xl">
@@ -305,7 +322,6 @@ const LandingPage = () => {
                 </div>
             </header>
 
-            {/* Hero Section */}
             <section className="pt-32 pb-16 container mx-auto px-6 text-center relative overflow-hidden">
                 <div className="absolute -top-20 -left-20 w-80 h-80 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-50 animate-blob"></div>
                 <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-50 animate-blob animation-delay-2000"></div>
@@ -314,15 +330,14 @@ const LandingPage = () => {
                 <button onClick={loginWithGoogle} className="mt-8 px-8 py-4 bg-slate-800 text-white font-bold rounded-full text-lg hover:bg-black transform hover:scale-105 transition-all">Mulai Petualangan Belajar (Gratis!)</button>
             </section>
             
-            {/* Stats Section */}
             <section className="py-16 bg-slate-100">
                 <div className="container mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
                     <div>
-                        <p className="text-4xl font-bold text-blue-600">{(stats.userCount)}+</p>
+                        <p className="text-4xl font-bold text-blue-600">{stats.userCount}+</p>
                         <p className="text-slate-500 mt-1">Pelajar Terdaftar</p>
                     </div>
                     <div>
-                        <p className="text-4xl font-bold text-blue-600">{(stats.materialCount)}+</p>
+                        <p className="text-4xl font-bold text-blue-600">{stats.materialCount}+</p>
                         <p className="text-slate-500 mt-1">Materi Telah Dipelajari</p>
                     </div>
                      <div>
@@ -332,7 +347,6 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* Testimonials */}
             <section className="py-20 container mx-auto px-6">
                 <h2 className="text-3xl font-bold text-center mb-12">Kata Mereka Tentang Bdukasi</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -345,7 +359,6 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* Footer */}
             <footer className="bg-slate-800 text-white py-12">
                 <div className="container mx-auto px-6 text-center">
                     <AppLogo className="w-12 h-12 mx-auto mb-4"/>
@@ -358,7 +371,7 @@ const LandingPage = () => {
     );
 };
 
-const InfoPage = () => { /* ... (Sama seperti sebelumnya, dengan styling baru) */
+const InfoPage = () => {
     const { markUserAsOld } = useContext(AuthContext);
     return (
         <div className="bg-slate-100 dark:bg-slate-900 flex items-center justify-center min-h-screen p-4">
@@ -408,7 +421,6 @@ const SettingsPage = () => {
          <AnimatedScreen key="pengaturan">
             <h1 className="text-3xl font-bold mb-8">Pengaturan</h1>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Profile Card */}
                 <InfoCard icon={<User />} title="Profil Pengguna">
                      <div className="flex items-center space-x-4">
                         <img src={userData?.photoURL} alt="Avatar" className="w-20 h-20 rounded-full" />
@@ -423,7 +435,6 @@ const SettingsPage = () => {
                     </button>
                 </InfoCard>
                 
-                {/* Settings Card */}
                 <InfoCard icon={<Settings />} title="Preferensi Aplikasi">
                     <div className="space-y-4">
                         <SettingToggle label="Mode Gelap" icon={<Palette/>} isEnabled={theme === 'dark'} onToggle={() => setTheme(p => p === 'light' ? 'dark' : 'light')} />
@@ -433,7 +444,6 @@ const SettingsPage = () => {
                         <SettingToggle label="Notifikasi" icon={notifications ? <Volume2/> : <VolumeX/>} isEnabled={notifications} onToggle={() => setNotifications(p => !p)} />
                         <SettingToggle label="Font Disleksia" icon={<Text/>} isEnabled={dyslexiaFont} onToggle={() => setDyslexiaFont(p => !p)} />
                         
-                        {/* Language & Font Size Selectors */}
                         <div className="flex gap-4">
                             <div className="w-1/2">
                                 <label className="font-semibold block mb-2 text-sm">Bahasa</label>
@@ -490,7 +500,6 @@ const ChatAIPage = () => {
         <AnimatedScreen key="tanya-ai">
             <h1 className="text-3xl font-bold mb-4">Tanya Kak Spenta AI</h1>
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg h-[70vh] flex flex-col">
-                {/* Chat Area */}
                 <div className="flex-1 p-6 space-y-4 overflow-y-auto">
                     {messages.map((msg, i) => (
                         <div key={i} className={`flex items-end gap-3 ${msg.sender === 'ai' ? 'justify-start' : 'justify-end'}`}>
@@ -503,7 +512,6 @@ const ChatAIPage = () => {
                     {isTyping && <div className="flex items-end gap-3 justify-start"><div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white flex-shrink-0"><Brain size={24}/></div><div className="px-4 py-3 bg-slate-200 dark:bg-slate-700 rounded-2xl rounded-bl-none"><div className="flex gap-1.5 items-center"><div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce delay-150"></div><div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce delay-300"></div></div></div></div>}
                     <div ref={messagesEndRef} />
                 </div>
-                {/* Input Area */}
                 <div className="p-4 border-t border-slate-200 dark:border-slate-700">
                     <div className="flex items-center gap-3">
                         <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} placeholder="Ketik pertanyaanmu di sini..." className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-full border-transparent focus:ring-2 focus:ring-blue-500 focus:border-transparent"/>
@@ -524,12 +532,15 @@ const DeveloperDashboard = () => {
     const [newVideoTitle, setNewVideoTitle] = useState('');
 
     useEffect(() => {
+        if (userData?.role !== 'developer') return;
         const q = query(collection(db, 'recommended_videos'), orderBy('createdAt', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setVideos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (error) => {
+            console.error("Error fetching videos for dev dashboard: ", error);
         });
         return unsubscribe;
-    }, []);
+    }, [userData]);
 
     const handleUploadVideo = async (e) => {
         e.preventDefault();
@@ -558,7 +569,6 @@ const DeveloperDashboard = () => {
         <AnimatedScreen key="dev-dashboard">
             <h1 className="text-3xl font-bold mb-4">Developer Dashboard</h1>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Video Management */}
                 <InfoCard icon={<UploadCloud />} title="Kelola Video Rekomendasi">
                     <form onSubmit={handleUploadVideo} className="space-y-4">
                         <input type="text" value={newVideoTitle} onChange={e => setNewVideoTitle(e.target.value)} placeholder="Judul Video" className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg" />
@@ -574,7 +584,6 @@ const DeveloperDashboard = () => {
                         ))}
                     </div>
                 </InfoCard>
-                {/* Stats Card */}
                 <InfoCard icon={<Users />} title="Statistik Aplikasi">
                     <p>Coming Soon...</p>
                 </InfoCard>
@@ -598,6 +607,8 @@ const DailyMissionCard = () => {
             } else {
                 setDoc(missionRef, missions);
             }
+        }, (error) => {
+            console.error("Error fetching daily mission:", error);
         });
         return unsub;
     }, [user, today]);
@@ -634,17 +645,22 @@ const DailyMissionCard = () => {
 };
 
 const RecommendedVideoSection = () => {
+    const { user } = useContext(AuthContext);
     const [videos, setVideos] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!user) return;
         const q = query(collection(db, 'recommended_videos'), orderBy('createdAt', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setVideos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching recommended videos:", error);
+            setLoading(false);
         });
         return unsubscribe;
-    }, []);
+    }, [user]);
 
     if (loading) return <p>Memuat video rekomendasi...</p>;
     if (videos.length === 0) return null;
@@ -687,7 +703,7 @@ const SettingToggle = ({ label, icon, isEnabled, onToggle }) => (
         <button onClick={onToggle} className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'}`}><span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} /></button>
     </div>
 );
-const Sidebar = () => { /* ... (Sama seperti sebelumnya) */
+const Sidebar = () => {
     const { page, setPage } = useContext(AppContext);
     const { userData } = useContext(AuthContext);
 
@@ -720,15 +736,28 @@ const Sidebar = () => { /* ... (Sama seperti sebelumnya) */
     );
 };
 
-const LearningFlow = () => { /* ... (Sama seperti sebelumnya) */
-    return <p>Alur Belajar disini</p>
+const LearningFlow = () => {
+    const { screen } = useContext(AppContext);
+    // Placeholder for actual learning flow components
+    return <div>Learning Flow Here. Current screen: {screen}</div>;
 };
 
 // --- CSS & STYLING INJECTOR ---
 const styleSheet = document.createElement("style");
 styleSheet.type = "text/css";
 styleSheet.innerText = `
-    /* ... (CSS sama seperti sebelumnya) */
+    @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;700&family=Open+Sans&display=swap');
+    :root { --font-family-default: 'Lexend', sans-serif; --font-family-dyslexia: 'Open Sans', sans-serif; }
+    body { font-family: var(--font-family-default); }
+    .dyslexia-friendly { font-family: var(--font-family-dyslexia); letter-spacing: 0.5px; }
+    .font-size-sm { font-size: 0.9rem; } .font-size-base { font-size: 1rem; }
+    .font-size-lg { font-size: 1.1rem; } .font-size-xl { font-size: 1.2rem; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .animate-fadeIn { animation: fadeIn 0.4s ease-in-out; }
+    @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } }
+    .animate-blob { animation: blob 7s infinite; }
+    .animation-delay-2000 { animation-delay: 2s; }
+    .no-animations * { transition: none !important; animation: none !important; }
+    .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 `;
 document.head.appendChild(styleSheet);
-
