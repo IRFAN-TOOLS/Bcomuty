@@ -1,94 +1,13 @@
 <!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <title>Login - Aplikasi Irham</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: linear-gradient(to bottom right, #2b5876, #4e4376);
-      color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .card {
-      background: #ffffff10;
-      padding: 30px;
-      border-radius: 20px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      text-align: center;
-      width: 300px;
-    }
-    h1 {
-      margin-bottom: 20px;
-    }
-    button {
-      background-color: #ffffff;
-      color: #333;
-      padding: 10px 20px;
-      font-size: 16px;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: background 0.3s ease;
-    }
-    button:hover {
-      background-color: #ddd;
-    }
-    #user-info {
-      margin-top: 20px;
-      font-size: 14px;
-    }
-    .logout {
-      margin-top: 10px;
-      background-color: #ff4b4b;
-      color: white;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Login Google</h1>
-    <button onclick="loginWithGoogle()">Lanjutkan dengan Google</button>
-
-    <div id="user-info" style="display:none;">
-      <p>Halo, <span id="username"></span>!</p>
-      <button class="logout" onclick="logout()">Logout</button>
-    </div>
-  </div>
-
-  <script>
-    // Ganti dengan info project Supabase milikmu
-    const supabase = supabase.createClient(
-      'https://cmrxzuddtrxdllkppkii.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcnh6dWRkdHJ4ZGxsa3Bwa2lpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3MTcxMDQsImV4cCI6MjA2NjI5MzEwNH0.LtW-OrpGW5DS_qOINT5SBg0Yvm9Xq7nLv1jUYmD2siM'
-    );
-
-    async function loginWithGoogle() {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google'
-      });
-      if (error) alert("Gagal login: " + error.message);
-    }
-
-    async function logout() {
-      await supabase.auth.signOut();
-      location.reload();
-    }
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        document.querySelector("button").style.display = "none";
-        document.getElementById("username").innerText = user.user_metadata.full_name;
-        document.getElementById("user-info").style.display = "block";
-      }
-    });
-  </script>
-</body>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000000" />
+    <title>Eduku</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
