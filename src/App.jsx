@@ -129,6 +129,7 @@ const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [isDeveloper, setIsDeveloper] = useState(false);
     const [userData, setUserData] = useState(null);
+    const [authError, setAuthError] = useState(null); // State baru untuk error autentikasi
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -136,9 +137,7 @@ const AuthProvider = ({ children }) => {
             if (currentUser) {
                 setIsDeveloper(DEV_ACCOUNTS.includes(currentUser.email));
 
-                // Simpan data pengguna ke Firestore jika belum ada
                 const userRef = doc(db, 'users', currentUser.uid);
-                // Menggunakan onSnapshot untuk real-time update dan memastikan data user ada
                 const unsubscribeUserDoc = onSnapshot(userRef, (docSnap) => {
                     if (!docSnap.exists()) {
                         setDoc(userRef, {
@@ -155,10 +154,11 @@ const AuthProvider = ({ children }) => {
                     }
                 }, (error) => {
                     console.error("Error fetching user data:", error);
+                    setAuthError(`Gagal memuat data pengguna: ${error.message}`);
                 });
                 return () => {
-                    unsubscribeUserDoc(); // Cleanup the user doc listener
-                    unsubscribe(); // Cleanup the auth state listener
+                    unsubscribeUserDoc(); 
+                    unsubscribe(); 
                 };
 
             } else {
@@ -167,30 +167,36 @@ const AuthProvider = ({ children }) => {
             }
             setLoading(false);
         });
-        return () => unsubscribe(); // Initial cleanup for auth state listener
+        return () => unsubscribe(); 
     }, []);
 
     const loginWithGoogle = async () => {
         setLoading(true);
+        setAuthError(null); // Reset error sebelum mencoba login
+        console.log("[Auth] Memulai proses login Google...");
         try {
             const provider = new GoogleAuthProvider();
-            // Menambahkan custom parameters untuk menangani blokir pop-up lebih baik
             provider.setCustomParameters({
-                prompt: 'select_account' // Memaksa pemilihan akun, bisa membantu di beberapa browser
+                prompt: 'select_account' 
             });
             await signInWithPopup(auth, provider);
+            console.log("[Auth] Login Google Berhasil!");
         } catch (error) {
-            console.error("Error saat login Google:", error);
+            console.error("[Auth Error] Terjadi kesalahan saat login Google:", error);
+            let errorMessage = "Terjadi kesalahan tidak dikenal saat login.";
             if (error.code === 'auth/popup-closed-by-user') {
-                // Pesan lebih jelas jika pop-up diblokir/ditutup
-                alert("Login dibatalkan atau pop-up diblokir. Harap izinkan pop-up dari browser Anda.");
+                errorMessage = "Login dibatalkan. Pop-up ditutup atau diblokir oleh browser Anda. Harap izinkan pop-up.";
             } else if (error.code === 'auth/cancelled-popup-request') {
-                alert("Permintaan login sebelumnya masih dalam proses. Mohon tunggu atau coba lagi.");
+                errorMessage = "Permintaan login sebelumnya masih dalam proses. Mohon tunggu atau coba lagi.";
+            } else if (error.code === 'auth/network-request-failed') {
+                errorMessage = "Gagal terhubung ke server autentikasi. Pastikan koneksi internet Anda stabil atau coba izinkan domain aplikasi di pengaturan Firebase.";
             } else {
-                alert(`Terjadi kesalahan saat login: ${error.message}.`);
+                errorMessage = `Terjadi kesalahan saat login: ${error.message}`;
             }
+            setAuthError(errorMessage); // Set error untuk ditampilkan di modal
         } finally {
             setLoading(false);
+            console.log("[Auth] Proses login selesai. Loading:", false);
         }
     };
 
@@ -198,13 +204,15 @@ const AuthProvider = ({ children }) => {
         try {
             await signOut(auth);
             setUser(null);
-            setUserData(null); // Clear user data on logout
+            setUserData(null); 
+            setAuthError(null); // Clear error on logout
         } catch (error) {
             console.error("Error saat logout:", error);
+            setAuthError(`Gagal logout: ${error.message}`);
         }
     };
 
-    const value = { user, userData, loading, loginWithGoogle, logout, isDeveloper };
+    const value = { user, userData, loading, loginWithGoogle, logout, isDeveloper, authError, setAuthError };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
@@ -301,14 +309,11 @@ const DevProvider = ({ children }) => {
 
             onSnapshot(doc(db, "dev_feature_flags", "main"), (doc) => {
                 if(doc.exists()){
-                    // Pastikan semua flag yang mungkin ada diinisialisasi, 
-                    // dan gunakan nilai default jika tidak ada di DB
                     setFeatureFlags(f => ({...f, ...doc.data()}));
                     addLog("Feature flags loaded.", "DB");
                 } else {
                     addLog("Feature flags document not found. Using defaults.", "DB-WARN");
-                    // Create if not exists
-                    setDoc(doc(db, "dev_feature_flags", "main"), featureFlags, { merge: true }); // Use merge to avoid overwriting
+                    setDoc(doc(db, "dev_feature_flags", "main"), featureFlags, { merge: true }); 
                 }
             }, error => addLog(`Flags fetch failed: ${error.message}`, "ERROR")),
 
@@ -324,7 +329,7 @@ const DevProvider = ({ children }) => {
             unsubscribers.forEach(unsub => unsub());
             addLog("Developer Context cleaned up.", "SYSTEM");
         };
-    }, []); // Removed 'featureFlags' from dependency array to avoid infinite loop on initial setDoc
+    }, []); 
 
     const addVideo = async (url) => {
         try {
@@ -359,7 +364,7 @@ const DevProvider = ({ children }) => {
         try {
             await deleteDoc(doc(db, "dev_youtube_videos", fbId));
             addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
-        } catch (error) {
+        } && error => {
             addLog(`Failed to delete video: ${error.message}`, "ERROR");
             console.error(error);
         }
@@ -413,7 +418,7 @@ const AppProvider = ({ children }) => {
     const [bankSoal, setBankSoal] = useState([]);
     const [history, setHistory] = useLocalStorage('bdukasi-expert-history-v5', []);
     const [isLoading, setIsLoading] = useState(false);
-    const [loadingMessage, setLoadingMessage] = '';
+    const [loadingMessage, setLoadingMessage] = useState(''); // Pastikan ini string kosong
     const [error, setError] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [toast, setToast] = useState({ show: false, message: '' });
@@ -435,13 +440,12 @@ const AppProvider = ({ children }) => {
             return;
         }
         try {
-            // Menggunakan setDoc dengan merge: true untuk memastikan dokumen dibuat jika belum ada
             const materialRef = doc(db, `users/${user.uid}/completed_materials`, topic.replace(/\s+/g, '-').toLowerCase());
             await setDoc(materialRef, {
                 topic,
                 completedAt: serverTimestamp(),
                 subjectName: subject?.name || 'Unknown',
-            }, { merge: true }); // Penting: gunakan merge true
+            }, { merge: true }); 
 
             showToast("Kerja bagus, kamu luar biasa! Materi ditandai selesai.");
         } catch (err) {
@@ -473,7 +477,7 @@ const AppProvider = ({ children }) => {
             setLearningVideos(videos);
         } catch (err) {
             console.error("Gagal fetch video pembelajaran:", err);
-            setLearningVideos([]); // Tetap kosongkan jika gagal, fitur ini pelengkap
+            setLearningVideos([]); 
         }
     }, [level, subject]);
 
@@ -482,7 +486,7 @@ const AppProvider = ({ children }) => {
         setLoadingMessage('Guru AI sedang menyiapkan materimu...'); 
         setError(null); 
         setLearningData(null); 
-        setLearningVideos([]); // Kosongkan video lama
+        setLearningVideos([]); 
         setPage('belajar'); 
         setScreen('lesson');
 
@@ -495,7 +499,6 @@ const AppProvider = ({ children }) => {
             const geminiData = await callGeminiAPI(geminiPrompt);
             setLearningData({ topic: searchTopic, ...geminiData });
 
-            // --- PANGGIL FUNGSI PENGAMBIL VIDEO SETELAH MATERI SIAP ---
             await fetchLearningVideos(searchTopic);
 
         } catch (err) {
@@ -514,7 +517,6 @@ const AppProvider = ({ children }) => {
         const prompt = `Buatkan ${count} soal pilihan ganda (A-E) tentang '${topic}' untuk pelajaran '${subject.name}' level ${level} ${track ? `jurusan ${track}` : ''}. Sertakan jawaban & penjelasan. Respons HANYA dalam format JSON array objek: [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]`;
         try { 
             const soal = await callGeminiAPI(prompt);
-            // Pastikan soal adalah array, jika tidak, inisialisasi sebagai array kosong
             setBankSoal(Array.isArray(soal) ? soal : []);
             setPage('belajar'); setScreen('bankSoal');
         } catch(err) { 
@@ -531,11 +533,10 @@ const AppProvider = ({ children }) => {
         const prompt = `Berikan 5 rekomendasi topik menarik untuk mata pelajaran "${subject.name}" level ${level} ${track ? `jurusan ${track}`: ''}. Jawab HANYA dalam format JSON array string. Contoh: ["Topik 1", "Topik 2"]`;
         try {  
             const recs = await callGeminiAPI(prompt); 
-            // Pastikan recs adalah array
             setRecommendations(Array.isArray(recs) ? recs : []); 
         } catch (err) { 
             console.error("Gagal fetch rekomendasi:", err); 
-            setRecommendations([]); // Set to empty array on error
+            setRecommendations([]); 
         }
     }, [contextValue]);
 
@@ -546,7 +547,6 @@ const AppProvider = ({ children }) => {
         loadingMessage, setLoadingMessage, isSidebarOpen, setSidebarOpen, contextValue,
         fetchLearningMaterial, fetchBankSoal, fetchRecommendations,
         handleMarkAsComplete, toast, showToast,
-        // --- EKSPOR STATE DAN FUNGSI BARU ---
         learningVideos
     };
 
@@ -557,7 +557,6 @@ const AppProvider = ({ children }) => {
 // --- FUNGSI API HELPER ---
 const callGeminiAPI = async (prompt, chatHistory = []) => {
     console.log("[API Call] Memanggil Gemini API...");
-    // Pastikan API Key tidak mengandung placeholder
     if (!GEMINI_API_KEY || GEMINI_API_KEY === "MASUKKAN_API_KEY_GEMINI_ANDA" || GEMINI_API_KEY.includes("GANTI")) {
         throw new Error("Kunci API Gemini belum diatur atau tidak valid.");
     }
@@ -568,15 +567,12 @@ const callGeminiAPI = async (prompt, chatHistory = []) => {
         const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) { 
             const errorBody = await response.json(); 
-            // Log error body untuk debugging lebih lanjut
             console.error("[API Error Body]", errorBody);
             throw new Error(`Permintaan API Gemini gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`); 
         }
         const result = await response.json();
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) {
-             // Jika text kosong, coba ambil langsung dari result.candidates tanpa .parts[0].text
-             // Ini untuk kasus di mana model mungkin mengembalikan JSON langsung di 'parts'
              if (result.candidates?.[0]?.content?.parts?.[0]) {
                  try {
                      return JSON.parse(result.candidates[0].content.parts[0]);
@@ -588,15 +584,11 @@ const callGeminiAPI = async (prompt, chatHistory = []) => {
              throw new Error("Respons API Gemini tidak valid atau kosong.");
         }
         
-        // Bersihkan teks dari markdown code block syntax jika ada
         const cleanedText = text.replace(/^```json\s*|```$/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (error) {
-        // Penanganan error parsing JSON atau error lain dari API
         if (error instanceof SyntaxError) {
              console.error("[API Exception] Gagal parse JSON dari Gemini. Respons mentah:", error.message, prompt);
-             // Coba panggil ulang API tanpa responseMimeType jika gagal parse JSON
-             // Ini adalah fallback jika model tidak konsisten mengembalikan JSON
              try {
                 const fallbackPayload = { contents: contents };
                 const fallbackResponse = await fetch(API_URL.split('?')[0] + `?key=${GEMINI_API_KEY}`, { 
@@ -632,7 +624,7 @@ export default function App() {
 }
 
 const MainApp = () => {
-    const { loading: authLoading, user } = useContext(AuthContext);
+    const { loading: authLoading, user, authError, setAuthError } = useContext(AuthContext);
     const { isLoading: appIsLoading, loadingMessage, toast } = useContext(AppContext);
     const [showPWAInstall, setShowPWAInstall] = useState(false);
     const { canInstall, isAppInstalled } = usePWAInstall();
@@ -655,7 +647,12 @@ const MainApp = () => {
     }
 
     if (!user) {
-        return <LandingPage />;
+        return (
+            <>
+                {authError && <AuthErrorModal message={authError} onClose={() => setAuthError(null)} />}
+                <LandingPage />
+            </>
+        );
     }
 
     return (
@@ -758,19 +755,17 @@ const DashboardPage = () => {
     useEffect(() => {
         setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
 
-        // Pastikan videos dan featureFlags tidak null sebelum mengakses properti
         if (featureFlags?.videoRecs && videos && videos.length > 0) {
             const activeVideos = videos.filter(v => v.isActive);
             const shuffled = [...activeVideos].sort(() => 0.5 - Math.random());
             setRecommendedVideos(shuffled.slice(0, 3));
         } else {
-            setRecommendedVideos([]); // Pastikan array kosong jika feature flag mati atau tidak ada video
+            setRecommendedVideos([]); 
         }
 
         if (user) {
             setLoadingStats(true);
             const statsRef = collection(db, `users/${user.uid}/completed_materials`);
-            // Menggunakan onSnapshot untuk mendapatkan update real-time untuk completed materials
             const unsubscribeStats = onSnapshot(statsRef, (snapshot) => {
                 setUserStats(prev => ({ ...prev, completed: snapshot.size }));
                 setLoadingStats(false);
@@ -778,9 +773,9 @@ const DashboardPage = () => {
                 console.error("Error fetching user completed materials:", error);
                 setLoadingStats(false);
             });
-            return () => unsubscribeStats(); // Cleanup listener
+            return () => unsubscribeStats(); 
         }
-    }, [videos, user, featureFlags]); // Tambahkan featureFlags sebagai dependency
+    }, [videos, user, featureFlags]); 
 
     return (
         <AnimatedScreen customKey="dashboard">
@@ -822,7 +817,7 @@ const DashboardPage = () => {
                         description="Segera hadir!" 
                         onClick={() => {}} 
                         className="bg-white dark:bg-slate-800"
-                        disabled={true} // !featureFlags?.dailyMissions
+                        disabled={true} 
                     />
                 </div>
 
@@ -842,7 +837,6 @@ const DashboardPage = () => {
                 </div>
             </div>
 
-            {/* Pastikan recommendedVideos ada sebelum map */}
             {featureFlags?.videoRecs && recommendedVideos?.length > 0 && (
                 <div className="mt-8">
                     <InfoCard icon={<Tv />} title="Rekomendasi Video Edukasi">
@@ -923,19 +917,14 @@ const DeveloperDashboardPage = () => {
     const [editingVideo, setEditingVideo] = useState(null);
     const [logFilter, setLogFilter] = useState('ALL');
 
-    // Pastikan videos dan featureFlags tidak null/undefined sebelum melakukan filter atau map
     const filteredLogs = useMemo(() => {
-        if (!logs) return []; // Pastikan logs tidak null
+        if (!logs) return []; 
         if (logFilter === 'ALL') return logs;
         return logs.filter(log => log.includes(`[${logFilter}]`));
     }, [logs, logFilter]);
 
     useEffect(() => {
-        // --- BARIS-BARIS INI ADALAH LOG PENGUJIAN YANG AKAN DIHAPUS ---
-        // addLog("Data Error Render Test: Cannot read properties of null (reading 'map')", "ERROR");
-        // addLog("Authentication failed for user 'test@example.com'", "AUTH");
-        // addLog("API Request to /youtube/v3/videos timed out", "API");
-        // --- AKHIR DARI BARIS LOG PENGUJIAN ---
+        // Baris-baris log pengujian telah dihapus dari sini
     }, [addLog]);
 
     if (!isDeveloper) {
@@ -970,7 +959,7 @@ const DeveloperDashboardPage = () => {
         { key: 'aiAvatar', label: "Avatar AI" },
     ];
 
-    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH', 'DB-WARN']; // Menambahkan DB-WARN
+    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH', 'DB-WARN']; 
 
     return (
         <AnimatedScreen customKey="dev-dashboard">
@@ -994,7 +983,6 @@ const DeveloperDashboardPage = () => {
                                 {videoLoading ? <Loader size={20} className="animate-spin" /> : <PlusCircle size={20} />}
                             </button>
                         </form>
-                        {/* Pastikan videos tidak null sebelum map */}
                         <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
                             {videos && videos.length > 0 ? videos.map(video => (
                                 <div key={video.fbId} className="flex items-center gap-2 p-2 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
@@ -1010,7 +998,6 @@ const DeveloperDashboardPage = () => {
                     </InfoCard>
                      <InfoCard icon={<Power />} title="Kontrol Fitur Aplikasi (Live)">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                           {/* Pastikan featureFlags tidak null sebelum map */}
                            {featureFlags && allFlags.map(flag => (
                                <FeatureToggleCard key={flag.key} featureKey={flag.key} label={flag.label} isEnabled={featureFlags[flag.key]} onToggle={toggleFeatureFlag} />
                            ))}
@@ -1026,7 +1013,6 @@ const DeveloperDashboardPage = () => {
                                {logCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                             </select>
                         </div>
-                        {/* Pastikan filteredLogs tidak null sebelum map */}
                         <div className="bg-black text-white font-mono text-xs p-4 rounded-lg h-[400px] flex-grow overflow-y-auto">
                             {filteredLogs && filteredLogs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') || log.includes('[AUTH]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[CONFIG]') ? 'text-cyan-400' : 'text-slate-300'}`}>{log}</p>)}
                         </div>
@@ -1083,7 +1069,6 @@ const ChatAiPage = () => {
 
         try {
             const prompt = `Sebagai "Kak Spenta AI", seorang guru yang ramah dan membantu, jawab pertanyaan berikut: ${input}`;
-            // Memastikan penggunaan callGeminiAPI yang benar
             const aiResponse = await callGeminiAPI(prompt, chatHistoryForApi);
             setMessages(prev => [...prev, { role: 'model', content: aiResponse }]);
         } catch (error) {
@@ -1170,19 +1155,16 @@ const LeaderboardPage = () => {
         const fetchLeaderboard = async () => {
             setLoading(true);
             try {
-                // Fetch all users
                 const usersSnapshot = await getDocs(collection(db, "users"));
                 const userPromises = usersSnapshot.docs.map(async (userDoc) => {
-                    // For each user, fetch their completed materials to get a score
                     const completedMaterialsSnapshot = await getDocs(collection(db, `users/${userDoc.id}/completed_materials`));
                     return {
                         ...userDoc.data(),
-                        score: completedMaterialsSnapshot.size // Score based on number of completed materials
+                        score: completedMaterialsSnapshot.size 
                     };
                 });
 
                 const usersWithScores = await Promise.all(userPromises);
-                // Sort users by score in descending order
                 usersWithScores.sort((a, b) => b.score - a.score);
                 setLeaderboardData(usersWithScores);
             } catch (error) {
@@ -1193,7 +1175,7 @@ const LeaderboardPage = () => {
         };
 
         fetchLeaderboard();
-    }, []); // Empty dependency array means this runs once on mount
+    }, []); 
 
     return (
         <AnimatedScreen key="leaderboard">
@@ -1234,6 +1216,20 @@ const ToastNotification = ({ message }) => (
     <div className="fixed bottom-5 right-5 bg-slate-900 dark:bg-white text-white dark:text-black px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fadeInUp z-50">
         <CheckCircle className="text-green-400" />
         <p className="font-semibold">{message}</p>
+    </div>
+);
+
+// Custom Modal untuk pesan error, menggantikan alert()
+const AuthErrorModal = ({ message, onClose }) => (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-6 text-center" onClick={e => e.stopPropagation()}>
+            <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">Login Gagal</h2>
+            <p className="text-slate-600 dark:text-slate-300 mb-6">{message}</p>
+            <button onClick={onClose} className="w-full px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition-colors">
+                Tutup
+            </button>
+        </div>
     </div>
 );
 
@@ -1369,7 +1365,6 @@ const LearningFlow = () => { const { screen } = useContext(AppContext); return <
 const LearningVideosSection = () => {
     const { learningVideos } = useContext(AppContext);
 
-    // Jangan tampilkan apapun jika tidak ada video
     if (!learningVideos || learningVideos.length === 0) {
         return null;
     }
@@ -1411,10 +1406,8 @@ const LearningMaterialScreen = () => {
                 {ringkasan && <InfoCard icon={<Lightbulb />} title="Ringkasan"><p className="leading-relaxed">{ringkasan}</p></InfoCard>}
                 {materi_lengkap && <InfoCard icon={<BookOpen />} title="Materi Lengkap"><div className="prose dark:prose-invert max-w-none"><ReactMarkdown>{materi_lengkap}</ReactMarkdown></div></InfoCard>}
 
-                {/* --- PENAMBAHAN KOMPONEN VIDEO DI SINI --- */}
                 <LearningVideosSection />
 
-                {/* Pastikan latihan_soal adalah array sebelum render */}
                 {latihan_soal && latihan_soal.length > 0 && <InfoCard icon={<BookMarked />} title="Latihan Soal"><QuizPlayer questions={latihan_soal} /></InfoCard>}
                 <div className="text-center pt-8">
                     <button onClick={() => handleMarkAsComplete(topic)} className="px-8 py-4 bg-green-500 text-white font-bold rounded-full shadow-lg hover:bg-green-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-3 group mx-auto">
@@ -1448,9 +1441,9 @@ const curriculum = {
 };
 const LevelSelectionScreen = () => { const { setScreen, setLevel, setPage } = useContext(AppContext); return ( <AnimatedScreen customKey="level"> <div className="text-center pt-8"> <BackButton onClick={() => setPage('dashboard')} /> <School className="w-24 h-24 mx-auto text-cyan-500" /> <h1 className="text-4xl font-bold mt-4">Pilih Jenjang Pendidikan</h1> <p className="text-xl text-slate-500 dark:text-slate-400 mt-2 mb-12">Mulai dari sini untuk petualangan belajarmu.</p> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto"> {Object.keys(curriculum).map((lvl) => <button key={lvl} onClick={() => { setLevel(lvl); setScreen(lvl === 'SMA' ? 'trackSelection' : 'subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold flex flex-col items-center justify-center gap-4 cursor-pointer">{lvl}</button>)} </div> </div> </AnimatedScreen> ); };
 const TrackSelectionScreen = () => { const { setScreen, setTrack } = useContext(AppContext); return ( <AnimatedScreen customKey="track"> <BackButton onClick={() => setScreen('levelSelection')} /> <div className="text-center pt-8"> <h1 className="text-4xl font-bold mb-12">Pilih Jurusan</h1> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-2xl mx-auto"> {Object.keys(curriculum.SMA.tracks).map((trackName) => <button key={trackName} onClick={() => { setTrack(trackName); setScreen('subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold">{trackName}</button>)} </div> </div> </AnimatedScreen> ); };
-const SubjectSelectionScreen = () => { const { level, track, setScreen, setSubject } = useContext(AppContext); const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects; const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection'; if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>; return ( <AnimatedScreen customKey="subject"> <BackButton onClick={() => setScreen(backScreen)} /> <div className="pt-8"> <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1> <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto"> {/* Pastikan subjects adalah array sebelum map */} {subjects && subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)} </div> </div> </AnimatedScreen> ); };
+const SubjectSelectionScreen = () => { const { level, track, setScreen, setSubject } = useContext(AppContext); const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects; const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection'; if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>; return ( <AnimatedScreen customKey="subject"> <BackButton onClick={() => setScreen(backScreen)} /> <div className="pt-8"> <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1> <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto"> {subjects && subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)} </div> </div> </AnimatedScreen> ); };
 const DynamicIcon = ({ name, ...props }) => { const IconComponent = iconMap[name]; return IconComponent ? <IconComponent {...props} /> : <HelpCircle {...props} />; };
-const SubjectDashboardScreen = () => { const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext); const [inputValue, setInputValue] = useState(''); const [activeTab, setActiveTab] = useState('rekomendasi'); useEffect(() => { if (subject && recommendations.length === 0) fetchRecommendations(); }, [subject, fetchRecommendations, recommendations.length]); if (!subject) return <div className="text-center">Harap pilih mata pelajaran. <BackButton onClick={() => setScreen('subjectSelection')} /></div>; const handleSearchSubmit = (e) => { e.preventDefault(); if(inputValue.trim()) { setError(null); fetchLearningMaterial(inputValue); } else { setError("Topik pencarian tidak boleh kosong."); } }; return ( <AnimatedScreen customKey="dashboard"> <BackButton onClick={() => setScreen('subjectSelection')} /> <div className="text-center pt-8"><DynamicIcon name={subject.iconName} size={80} className="text-cyan-500 mx-auto mb-4" /><h1 className="text-4xl font-bold">Mata Pelajaran: {subject.name}</h1></div> <div className="w-full max-w-2xl mx-auto my-12"> <form onSubmit={handleSearchSubmit} className="relative"> <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Ketik topik untuk dipelajari..." className="w-full pl-6 pr-16 py-4 text-lg bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 rounded-full focus:ring-4 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all"/> <button type="submit" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition-transform active:scale-95"><Search className="w-6 h-6" /></button> </form> {error && <ErrorMessage message={error} />} </div> <div className="max-w-4xl mx-auto"> <div className="flex justify-center border-b border-slate-300 dark:border-slate-700 mb-6 flex-wrap">{['rekomendasi', 'riwayat', 'bank_soal'].map(tab => <TabButton key={tab} icon={{rekomendasi: <Sparkles/>, riwayat: <History/>, bank_soal: <BrainCircuit/>}[tab]} text={{rekomendasi: "Rekomendasi", riwayat: "Riwayat", bank_soal: "Bank Soal"}[tab]} isActive={activeTab===tab} onClick={() => setActiveTab(tab)}/>)}</div> <div className="animate-fadeInUp"> {/* Pastikan recommendations dan history tidak null sebelum map */} {activeTab === 'rekomendasi' && (recommendations && recommendations.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{recommendations.map((rec,i)=>(<ListItem key={i} text={rec} onClick={()=>fetchLearningMaterial(rec)}/>))}</div> : <p className="text-center text-slate-500">Guru AI sedang mencari rekomendasi...</p>)} {activeTab === 'riwayat' && (history && history.filter(h => h.subjectName === subject.name).length > 0 ? <div className="grid md:grid-cols-2 gap-4">{history.filter(h => h.subjectName === subject.name).map((h,i)=>(<ListItem key={i} text={h.topic} onClick={()=>fetchLearningMaterial(h.topic, true)}/>))}</div> : <p className="text-center text-slate-500">Belum ada riwayat belajar.</p>)} {activeTab === 'bank_soal' && <BankSoalGenerator />} </div> </div> </AnimatedScreen> ); };
+const SubjectDashboardScreen = () => { const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext); const [inputValue, setInputValue] = useState(''); const [activeTab, setActiveTab] = useState('rekomendasi'); useEffect(() => { if (subject && recommendations.length === 0) fetchRecommendations(); }, [subject, fetchRecommendations, recommendations.length]); if (!subject) return <div className="text-center">Harap pilih mata pelajaran. <BackButton onClick={() => setScreen('subjectSelection')} /></div>; const handleSearchSubmit = (e) => { e.preventDefault(); if(inputValue.trim()) { setError(null); fetchLearningMaterial(inputValue); } else { setError("Topik pencarian tidak boleh kosong."); } }; return ( <AnimatedScreen customKey="dashboard"> <BackButton onClick={() => setScreen('subjectSelection')} /> <div className="text-center pt-8"><DynamicIcon name={subject.iconName} size={80} className="text-cyan-500 mx-auto mb-4" /><h1 className="text-4xl font-bold">Mata Pelajaran: {subject.name}</h1></div> <div className="w-full max-w-2xl mx-auto my-12"> <form onSubmit={handleSearchSubmit} className="relative"> <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Ketik topik untuk dipelajari..." className="w-full pl-6 pr-16 py-4 text-lg bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 rounded-full focus:ring-4 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all"/> <button type="submit" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition-transform active:scale-95"><Search className="w-6 h-6" /></button> </form> {error && <ErrorMessage message={error} />} </div> <div className="max-w-4xl mx-auto"> <div className="flex justify-center border-b border-slate-300 dark:border-slate-700 mb-6 flex-wrap">{['rekomendasi', 'riwayat', 'bank_soal'].map(tab => <TabButton key={tab} icon={{rekomendasi: <Sparkles/>, riwayat: <History/>, bank_soal: <BrainCircuit/>}[tab]} text={{rekomendasi: "Rekomendasi", riwayat: "Riwayat", bank_soal: "Bank Soal"}[tab]} isActive={activeTab===tab} onClick={() => setActiveTab(tab)}/>)}</div> <div className="animate-fadeInUp"> {activeTab === 'rekomendasi' && (recommendations && recommendations.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{recommendations.map((rec,i)=>(<ListItem key={i} text={rec} onClick={()=>fetchLearningMaterial(rec)}/>))}</div> : <p className="text-center text-slate-500">Guru AI sedang mencari rekomendasi...</p>)} {activeTab === 'riwayat' && (history && history.filter(h => h.subjectName === subject.name).length > 0 ? <div className="grid md:grid-cols-2 gap-4">{history.filter(h => h.subjectName === subject.name).map((h,i)=>(<ListItem key={i} text={h.topic} onClick={()=>fetchLearningMaterial(h.topic, true)}/>))}</div> : <p className="text-center text-slate-500">Belum ada riwayat belajar.</p>)} {activeTab === 'bank_soal' && <BankSoalGenerator />} </div> </div> </AnimatedScreen> ); };
 const BankSoalGenerator = () => { const { setError, fetchBankSoal } = useContext(AppContext); const [topic, setTopic] = useState(''); const [count, setCount] = useState(5); const handleSubmit = (e) => { e.preventDefault(); if (!topic.trim()) { setError("Topik soal tidak boleh kosong."); return; } if (count < 1 || count > 20) { setError("Jumlah soal harus antara 1 dan 20."); return; } setError(null); fetchBankSoal(topic, count); }; return ( <div className="max-w-xl mx-auto bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700"> <h3 className="text-xl font-bold text-center mb-4">🎯 Bank Soal Berbasis Topik</h3> <p className="text-center text-slate-500 dark:text-slate-400 mb-4">Masukkan topik spesifik dan jumlah soal.</p> <form onSubmit={handleSubmit} className="space-y-4"> <input type="text" value={topic} onChange={e => setTopic(e.target.value)} placeholder='Contoh: Perang Diponegoro' className='w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' /> <div className="flex flex-col sm:flex-row gap-4"> <input type="number" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} min="1" max="20" className='w-full sm:w-1/3 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' /> <button type="submit" className="w-full sm:w-2/3 p-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors disabled:bg-slate-500">Buatkan Soal!</button> </div> </form> </div> ); };
 const TabButton = ({icon, text, isActive, onClick}) => <button onClick={onClick} className={`flex items-center gap-2 px-4 py-3 sm:px-6 font-semibold border-b-2 transition-all ${isActive ? 'text-cyan-500 border-cyan-500' : 'text-slate-500 border-transparent hover:text-cyan-500'}`}>{React.cloneElement(icon, {size: 20})} <span className="hidden sm:inline">{text}</span></button>;
 const ListItem = ({text, onClick}) => <button onClick={onClick} className="w-full text-left flex justify-between items-center p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-cyan-500 rounded-lg transition-all"><span className="font-semibold">{text}</span><ChevronRight /></button>;
