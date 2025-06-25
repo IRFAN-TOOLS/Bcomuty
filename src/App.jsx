@@ -18,11 +18,11 @@ import ReactMarkdown from 'react-markdown';
 
 // --- KONFIGURASI PENTING & API KEYS ---
 // CATATAN: Ganti dengan kunci Anda sendiri di environment produksi.
-const GEMINI_API_KEY = "GEMINI_API_KEY"; // GANTI DENGAN API KEY ANDA
-const YOUTUBE_API_KEY = "YOUTUBE_API_KEY"; // GANTI DENGAN API KEY ANDA
+const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik";
+const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
 
 const firebaseConfig = {
-    apiKey: "FIREBASE_API_KEY", // GANTI DENGAN API KEY ANDA
+    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // GANTI DENGAN API KEY ANDA
     authDomain: "bgune---community.firebaseapp.com",
     projectId: "bgune---community",
     storageBucket: "bgune---community.appspot.com",
