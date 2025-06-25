@@ -138,8 +138,7 @@ const AuthProvider = ({ children }) => {
 
                 // Simpan data pengguna ke Firestore jika belum ada
                 const userRef = doc(db, 'users', currentUser.uid);
-                // Menggunakan onSnapshot untuk real-time update dan memastikan data user ada
-                const unsubscribeUserDoc = onSnapshot(userRef, (docSnap) => {
+                onSnapshot(userRef, (docSnap) => {
                     if (!docSnap.exists()) {
                         setDoc(userRef, {
                             uid: currentUser.uid,
@@ -153,13 +152,7 @@ const AuthProvider = ({ children }) => {
                         updateDoc(userRef, { lastLogin: serverTimestamp() });
                         setUserData(docSnap.data());
                     }
-                }, (error) => {
-                    console.error("Error fetching user data:", error);
                 });
-                return () => {
-                    unsubscribeUserDoc(); // Cleanup the user doc listener
-                    unsubscribe(); // Cleanup the auth state listener
-                };
 
             } else {
                 setIsDeveloper(false);
@@ -167,28 +160,16 @@ const AuthProvider = ({ children }) => {
             }
             setLoading(false);
         });
-        return () => unsubscribe(); // Initial cleanup for auth state listener
+        return () => unsubscribe();
     }, []);
 
     const loginWithGoogle = async () => {
         setLoading(true);
         try {
             const provider = new GoogleAuthProvider();
-            // Menambahkan custom parameters untuk menangani blokir pop-up lebih baik
-            provider.setCustomParameters({
-                prompt: 'select_account' // Memaksa pemilihan akun, bisa membantu di beberapa browser
-            });
             await signInWithPopup(auth, provider);
         } catch (error) {
             console.error("Error saat login Google:", error);
-            if (error.code === 'auth/popup-closed-by-user') {
-                // Pesan lebih jelas jika pop-up diblokir/ditutup
-                alert("Login dibatalkan atau pop-up diblokir. Harap izinkan pop-up dari browser Anda.");
-            } else if (error.code === 'auth/cancelled-popup-request') {
-                alert("Permintaan login sebelumnya masih dalam proses. Mohon tunggu atau coba lagi.");
-            } else {
-                alert(`Terjadi kesalahan saat login: ${error.message}.`);
-            }
         } finally {
             setLoading(false);
         }
@@ -198,7 +179,6 @@ const AuthProvider = ({ children }) => {
         try {
             await signOut(auth);
             setUser(null);
-            setUserData(null); // Clear user data on logout
         } catch (error) {
             console.error("Error saat logout:", error);
         }
@@ -301,14 +281,12 @@ const DevProvider = ({ children }) => {
 
             onSnapshot(doc(db, "dev_feature_flags", "main"), (doc) => {
                 if(doc.exists()){
-                    // Pastikan semua flag yang mungkin ada diinisialisasi, 
-                    // dan gunakan nilai default jika tidak ada di DB
                     setFeatureFlags(f => ({...f, ...doc.data()}));
                     addLog("Feature flags loaded.", "DB");
                 } else {
                     addLog("Feature flags document not found. Using defaults.", "DB-WARN");
                     // Create if not exists
-                    setDoc(doc(db, "dev_feature_flags", "main"), featureFlags, { merge: true }); // Use merge to avoid overwriting
+                    setDoc(doc(db, "dev_feature_flags", "main"), featureFlags);
                 }
             }, error => addLog(`Flags fetch failed: ${error.message}`, "ERROR")),
 
@@ -324,7 +302,7 @@ const DevProvider = ({ children }) => {
             unsubscribers.forEach(unsub => unsub());
             addLog("Developer Context cleaned up.", "SYSTEM");
         };
-    }, []); // Removed 'featureFlags' from dependency array to avoid infinite loop on initial setDoc
+    }, []);
 
     const addVideo = async (url) => {
         try {
@@ -353,33 +331,18 @@ const DevProvider = ({ children }) => {
     };
 
     const deleteVideo = async (fbId) => {
-        try {
-            await deleteDoc(doc(db, "dev_youtube_videos", fbId));
-            addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
-        } catch (error) {
-            addLog(`Failed to delete video: ${error.message}`, "ERROR");
-            console.error(error);
-        }
+        await deleteDoc(doc(db, "dev_youtube_videos", fbId));
+        addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
     };
 
     const toggleVideoStatus = async (fbId, currentStatus) => {
-        try {
-            await updateDoc(doc(db, "dev_youtube_videos", fbId), { isActive: !currentStatus });
-            addLog(`Video status ${fbId} changed to ${!currentStatus ? 'ACTIVE' : 'INACTIVE'}.`, "CONFIG");
-        } catch (error) {
-            addLog(`Failed to toggle video status: ${error.message}`, "ERROR");
-            console.error(error);
-        }
+        await updateDoc(doc(db, "dev_youtube_videos", fbId), { isActive: !currentStatus });
+        addLog(`Video status ${fbId} changed to ${!currentStatus ? 'ACTIVE' : 'INACTIVE'}.`, "CONFIG");
     };
 
     const updateVideoTitle = async (fbId, newTitle) => {
-        try {
-            await updateDoc(doc(db, "dev_youtube_videos", fbId), { title: newTitle });
-            addLog(`Video title ${fbId} updated.`, "CONFIG");
-        } catch (error) {
-            addLog(`Failed to update video title: ${error.message}`, "ERROR");
-            console.error(error);
-        }
+        await updateDoc(doc(db, "dev_youtube_videos", fbId), { title: newTitle });
+        addLog(`Video title ${fbId} updated.`, "CONFIG");
     }
 
     const toggleFeatureFlag = async (featureKey) => {
@@ -390,7 +353,6 @@ const DevProvider = ({ children }) => {
             addLog(`Feature '${featureKey}' is now ${newValue ? 'ACTIVE' : 'INACTIVE'}.`, "CONFIG");
         } catch (error) {
             addLog(`Failed to update flag '${featureKey}': ${error.message}`, "ERROR");
-            console.error(error);
         }
     };
 
@@ -427,19 +389,14 @@ const AppProvider = ({ children }) => {
     const addHistory = useCallback((item) => setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50)), [setHistory]);
 
     const handleMarkAsComplete = async (topic) => {
-        if (!user || !topic) {
-            showToast("Gagal menyimpan progres: Pengguna tidak terautentikasi atau topik kosong.");
-            return;
-        }
+        if (!user || !topic) return;
         try {
-            // Menggunakan setDoc dengan merge: true untuk memastikan dokumen dibuat jika belum ada
             const materialRef = doc(db, `users/${user.uid}/completed_materials`, topic.replace(/\s+/g, '-').toLowerCase());
             await setDoc(materialRef, {
                 topic,
                 completedAt: serverTimestamp(),
                 subjectName: subject?.name || 'Unknown',
-            }, { merge: true }); // Penting: gunakan merge true
-
+            });
             showToast("Kerja bagus, kamu luar biasa! Materi ditandai selesai.");
         } catch (err) {
             console.error("Gagal menandai selesai:", err);
@@ -458,10 +415,7 @@ const AppProvider = ({ children }) => {
             const query = encodeURIComponent(`${topic} ${subject?.name || ''} ${level || ''} tutorial`);
             const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&maxResults=3&key=${YOUTUBE_API_KEY}`;
             const response = await fetch(url);
-            if (!response.ok) {
-                const errorBody = await response.json();
-                throw new Error(`Gagal mengambil data video dari YouTube: ${errorBody.error?.message || 'Error tidak diketahui'}`);
-            }
+            if (!response.ok) throw new Error('Gagal mengambil data video dari YouTube.');
             const data = await response.json();
             const videos = data.items.map(item => ({
                 id: item.id.videoId,
@@ -511,15 +465,9 @@ const AppProvider = ({ children }) => {
         const prompt = `Buatkan ${count} soal pilihan ganda (A-E) tentang '${topic}' untuk pelajaran '${subject.name}' level ${level} ${track ? `jurusan ${track}` : ''}. Sertakan jawaban & penjelasan. Respons HANYA dalam format JSON array objek: [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]`;
         try { 
             const soal = await callGeminiAPI(prompt);
-            // Pastikan soal adalah array, jika tidak, inisialisasi sebagai array kosong
             setBankSoal(Array.isArray(soal) ? soal : []);
             setPage('belajar'); setScreen('bankSoal');
-        } catch(err) { 
-            setError(`Gagal membuat bank soal: ${err.message}`); 
-            setPage('dashboard'); 
-        } finally { 
-            setIsLoading(false); 
-        }
+        } catch(err) { setError(`Gagal membuat bank soal: ${err.message}`); setPage('dashboard'); } finally { setIsLoading(false); }
     }, [contextValue]);
 
     const fetchRecommendations = useCallback(async () => {
@@ -528,12 +476,8 @@ const AppProvider = ({ children }) => {
         const prompt = `Berikan 5 rekomendasi topik menarik untuk mata pelajaran "${subject.name}" level ${level} ${track ? `jurusan ${track}`: ''}. Jawab HANYA dalam format JSON array string. Contoh: ["Topik 1", "Topik 2"]`;
         try {  
             const recs = await callGeminiAPI(prompt); 
-            // Pastikan recs adalah array
             setRecommendations(Array.isArray(recs) ? recs : []); 
-        } catch (err) { 
-            console.error("Gagal fetch rekomendasi:", err); 
-            setRecommendations([]); // Set to empty array on error
-        }
+        } catch (err) { console.error("Gagal fetch rekomendasi:", err); }
     }, [contextValue]);
 
     const value = { 
@@ -554,59 +498,22 @@ const AppProvider = ({ children }) => {
 // --- FUNGSI API HELPER ---
 const callGeminiAPI = async (prompt, chatHistory = []) => {
     console.log("[API Call] Memanggil Gemini API...");
-    // Pastikan API Key tidak mengandung placeholder
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === "MASUKKAN_API_KEY_GEMINI_ANDA" || GEMINI_API_KEY.includes("GANTI")) {
-        throw new Error("Kunci API Gemini belum diatur atau tidak valid.");
-    }
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "MASUKKAN_API_KEY_GEMINI_ANDA") throw new Error("Kunci API Gemini belum diatur.");
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const contents = chatHistory.length > 0 ? [...chatHistory, { role: "user", parts: [{ text: prompt }] }] : [{ role: "user", parts: [{ text: prompt }] }];
-    const payload = { contents, generationConfig: { responseMimeType: "application/json" } };
+    const payload = { contents, generationConfig: { response_mime_type: "application/json" } };
     try {
         const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!response.ok) { 
-            const errorBody = await response.json(); 
-            // Log error body untuk debugging lebih lanjut
-            console.error("[API Error Body]", errorBody);
-            throw new Error(`Permintaan API Gemini gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`); 
-        }
+        if (!response.ok) { const errorBody = await response.json(); throw new Error(`Permintaan API Gemini gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`); }
         const result = await response.json();
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-             // Jika text kosong, coba ambil langsung dari result.candidates tanpa .parts[0].text
-             // Ini untuk kasus di mana model mungkin mengembalikan JSON langsung di 'parts'
-             if (result.candidates?.[0]?.content?.parts?.[0]) {
-                 try {
-                     return JSON.parse(result.candidates[0].content.parts[0]);
-                 } catch (parseError) {
-                     console.warn("Failed to parse direct content as JSON, returning raw text if available.");
-                     return result.candidates[0].content.parts[0];
-                 }
-             }
-             throw new Error("Respons API Gemini tidak valid atau kosong.");
-        }
-        
-        // Bersihkan teks dari markdown code block syntax jika ada
-        const cleanedText = text.replace(/^```json\s*|```$/g, '').trim();
+        if (!text) throw new Error("Respons API Gemini tidak valid atau kosong.");
+        const cleanedText = text.replace(/^```(json)?\s*|```$/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (error) {
-        // Penanganan error parsing JSON atau error lain dari API
         if (error instanceof SyntaxError) {
-             console.error("[API Exception] Gagal parse JSON dari Gemini. Respons mentah:", error.message, prompt);
-             // Coba panggil ulang API tanpa responseMimeType jika gagal parse JSON
-             // Ini adalah fallback jika model tidak konsisten mengembalikan JSON
-             try {
-                const fallbackPayload = { contents: contents };
-                const fallbackResponse = await fetch(API_URL.split('?')[0] + `?key=${GEMINI_API_KEY}`, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify(fallbackPayload) 
-                });
-                const fallbackResult = await fallbackResponse.json();
-                return fallbackResult.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, terjadi kesalahan dalam memproses jawaban. (Fallback)";
-             } catch (fallbackError) {
-                 console.error("[API Exception] Fallback Gemini API juga gagal:", fallbackError);
-                 throw new Error("Maaf, terjadi kesalahan dalam memproses jawaban. Silakan coba lagi.");
-             }
+             const result = await (await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
+             return result.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, terjadi kesalahan dalam memproses jawaban.";
         }
         console.error("[API Exception] Terjadi kesalahan Gemini:", error);
         throw error;
@@ -705,7 +612,7 @@ const LandingPage = () => {
         <div className="bg-slate-50 min-h-screen text-slate-800">
             <header className="absolute top-0 left-0 w-full p-6 z-10 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                    <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Bdukasi Logo" className="h-10 w-10" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/40x40/cccccc/ffffff?text=Logo'; }} />
+                    <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Bdukasi Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} />
                     <h1 className="font-bold text-2xl">Bdukasi</h1>
                 </div>
                  <button onClick={loginWithGoogle} disabled={loading} className="px-5 py-2.5 bg-cyan-500 text-white font-bold rounded-full shadow-lg hover:bg-cyan-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-2 group">
@@ -755,29 +662,21 @@ const DashboardPage = () => {
     useEffect(() => {
         setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
 
-        // Pastikan videos dan featureFlags tidak null sebelum mengakses properti
         if (featureFlags?.videoRecs && videos && videos.length > 0) {
             const activeVideos = videos.filter(v => v.isActive);
             const shuffled = [...activeVideos].sort(() => 0.5 - Math.random());
             setRecommendedVideos(shuffled.slice(0, 3));
-        } else {
-            setRecommendedVideos([]); // Pastikan array kosong jika feature flag mati atau tidak ada video
         }
 
         if (user) {
             setLoadingStats(true);
             const statsRef = collection(db, `users/${user.uid}/completed_materials`);
-            // Menggunakan onSnapshot untuk mendapatkan update real-time untuk completed materials
-            const unsubscribeStats = onSnapshot(statsRef, (snapshot) => {
+            getDocs(statsRef).then(snapshot => {
                 setUserStats(prev => ({ ...prev, completed: snapshot.size }));
                 setLoadingStats(false);
-            }, (error) => {
-                console.error("Error fetching user completed materials:", error);
-                setLoadingStats(false);
-            });
-            return () => unsubscribeStats(); // Cleanup listener
+            }).catch(console.error);
         }
-    }, [videos, user, featureFlags]); // Tambahkan featureFlags sebagai dependency
+    }, [videos, user, featureFlags]);
 
     return (
         <AnimatedScreen customKey="dashboard">
@@ -839,8 +738,7 @@ const DashboardPage = () => {
                 </div>
             </div>
 
-            {/* Pastikan recommendedVideos ada sebelum map */}
-            {featureFlags?.videoRecs && recommendedVideos?.length > 0 && (
+            {featureFlags?.videoRecs && recommendedVideos.length > 0 && (
                 <div className="mt-8">
                     <InfoCard icon={<Tv />} title="Rekomendasi Video Edukasi">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -885,7 +783,7 @@ const SettingsPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <InfoCard icon={<User size={24} />} title="Informasi Akun">
                     <div className="flex items-center space-x-4">
-                        <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName}&background=random&color=fff`} alt="User Avatar" className="w-20 h-20 rounded-full" onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/80x80/cccccc/ffffff?text=${user?.displayName?.charAt(0) || 'U'}`; }} />
+                        <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName}&background=random&color=fff`} alt="User Avatar" className="w-20 h-20 rounded-full" />
                         <div>
                             <h3 className="text-xl font-bold">{user?.displayName}</h3>
                             <p className="text-slate-500 dark:text-slate-400">{user?.email}</p>
@@ -919,19 +817,15 @@ const DeveloperDashboardPage = () => {
     const [videoLoading, setVideoLoading] = useState(false);
     const [editingVideo, setEditingVideo] = useState(null);
     const [logFilter, setLogFilter] = useState('ALL');
-
-    // Pastikan videos dan featureFlags tidak null/undefined sebelum melakukan filter atau map
     const filteredLogs = useMemo(() => {
-        if (!logs) return []; // Pastikan logs tidak null
         if (logFilter === 'ALL') return logs;
         return logs.filter(log => log.includes(`[${logFilter}]`));
     }, [logs, logFilter]);
 
     useEffect(() => {
-        // Contoh log, bisa dihapus setelah debugging
-        // addLog("Data Error Render Test: Cannot read properties of null (reading 'map')", "ERROR");
-        // addLog("Authentication failed for user 'test@example.com'", "AUTH");
-        // addLog("API Request to /youtube/v3/videos timed out", "API");
+        addLog("Data Error Render Test: Cannot read properties of null (reading 'map')", "ERROR");
+        addLog("Authentication failed for user 'test@example.com'", "AUTH");
+        addLog("API Request to /youtube/v3/videos timed out", "API");
     }, [addLog]);
 
     if (!isDeveloper) {
@@ -966,7 +860,7 @@ const DeveloperDashboardPage = () => {
         { key: 'aiAvatar', label: "Avatar AI" },
     ];
 
-    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH', 'DB-WARN']; // Menambahkan DB-WARN
+    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH'];
 
     return (
         <AnimatedScreen customKey="dev-dashboard">
@@ -990,9 +884,8 @@ const DeveloperDashboardPage = () => {
                                 {videoLoading ? <Loader size={20} className="animate-spin" /> : <PlusCircle size={20} />}
                             </button>
                         </form>
-                        {/* Pastikan videos tidak null sebelum map */}
                         <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
-                            {videos && videos.length > 0 ? videos.map(video => (
+                            {videos.length > 0 ? videos.map(video => (
                                 <div key={video.fbId} className="flex items-center gap-2 p-2 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
                                     <button onClick={() => toggleVideoStatus(video.fbId, video.isActive)} className="p-1">
                                         {video.isActive ? <Eye size={16} className="text-green-500"/> : <EyeOff size={16} className="text-slate-500"/>}
@@ -1006,8 +899,7 @@ const DeveloperDashboardPage = () => {
                     </InfoCard>
                      <InfoCard icon={<Power />} title="Kontrol Fitur Aplikasi (Live)">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                           {/* Pastikan featureFlags tidak null sebelum map */}
-                           {featureFlags && allFlags.map(flag => (
+                           {allFlags.map(flag => (
                                <FeatureToggleCard key={flag.key} featureKey={flag.key} label={flag.label} isEnabled={featureFlags[flag.key]} onToggle={toggleFeatureFlag} />
                            ))}
                         </div>
@@ -1022,9 +914,8 @@ const DeveloperDashboardPage = () => {
                                {logCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                             </select>
                         </div>
-                        {/* Pastikan filteredLogs tidak null sebelum map */}
                         <div className="bg-black text-white font-mono text-xs p-4 rounded-lg h-[400px] flex-grow overflow-y-auto">
-                            {filteredLogs && filteredLogs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') || log.includes('[AUTH]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[CONFIG]') ? 'text-cyan-400' : 'text-slate-300'}`}>{log}</p>)}
+                            {filteredLogs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') || log.includes('[AUTH]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[CONFIG]') ? 'text-cyan-400' : 'text-slate-300'}`}>{log}</p>)}
                         </div>
                     </InfoCard>
                 </div>
@@ -1079,8 +970,18 @@ const ChatAiPage = () => {
 
         try {
             const prompt = `Sebagai "Kak Spenta AI", seorang guru yang ramah dan membantu, jawab pertanyaan berikut: ${input}`;
-            // Memastikan penggunaan callGeminiAPI yang benar
-            const aiResponse = await callGeminiAPI(prompt, chatHistoryForApi);
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+            const payload = {
+                contents: [...chatHistoryForApi, { role: "user", parts: [{ text: prompt }] }],
+            };
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error("API request failed");
+            const result = await response.json();
+            const aiResponse = result.candidates[0].content.parts[0].text;
             setMessages(prev => [...prev, { role: 'model', content: aiResponse }]);
         } catch (error) {
             setMessages(prev => [...prev, { role: 'model', content: "Aduh, sepertinya ada sedikit gangguan di sirkuitku. Bisa coba tanyakan lagi?" }]);
@@ -1166,19 +1067,16 @@ const LeaderboardPage = () => {
         const fetchLeaderboard = async () => {
             setLoading(true);
             try {
-                // Fetch all users
                 const usersSnapshot = await getDocs(collection(db, "users"));
                 const userPromises = usersSnapshot.docs.map(async (userDoc) => {
-                    // For each user, fetch their completed materials to get a score
                     const completedMaterialsSnapshot = await getDocs(collection(db, `users/${userDoc.id}/completed_materials`));
                     return {
                         ...userDoc.data(),
-                        score: completedMaterialsSnapshot.size // Score based on number of completed materials
+                        score: completedMaterialsSnapshot.size
                     };
                 });
 
                 const usersWithScores = await Promise.all(userPromises);
-                // Sort users by score in descending order
                 usersWithScores.sort((a, b) => b.score - a.score);
                 setLeaderboardData(usersWithScores);
             } catch (error) {
@@ -1189,7 +1087,7 @@ const LeaderboardPage = () => {
         };
 
         fetchLeaderboard();
-    }, []); // Empty dependency array means this runs once on mount
+    }, []);
 
     return (
         <AnimatedScreen key="leaderboard">
@@ -1201,10 +1099,10 @@ const LeaderboardPage = () => {
             ) : (
                 <div className="bg-white dark:bg-slate-800/50 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700/50 overflow-hidden">
                     <div className="divide-y divide-slate-200 dark:divide-slate-700/50">
-                        {leaderboardData && leaderboardData.length > 0 ? leaderboardData.map((player, index) => (
-                            <div key={player.uid} className={`p-4 flex items-center gap-4 transition-colors ${user && player.uid === user.uid ? 'bg-cyan-50 dark:bg-cyan-900/20' : ''}`}>
+                        {leaderboardData.map((player, index) => (
+                            <div key={player.uid} className={`p-4 flex items-center gap-4 transition-colors ${player.uid === user.uid ? 'bg-cyan-50 dark:bg-cyan-900/20' : ''}`}>
                                 <span className={`font-bold text-xl w-10 text-center ${index < 3 ? 'text-amber-500' : 'text-slate-400'}`}>{index + 1}</span>
-                                <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}`} alt={player.displayName} className="w-12 h-12 rounded-full" onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/48x48/cccccc/ffffff?text=${player.displayName?.charAt(0) || 'U'}`; }} />
+                                <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}`} alt={player.displayName} className="w-12 h-12 rounded-full" />
                                 <div className="flex-grow">
                                     <p className="font-bold">{player.displayName}</p>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">Poin: <span className="font-semibold text-slate-700 dark:text-slate-200">{player.score}</span></p>
@@ -1213,9 +1111,7 @@ const LeaderboardPage = () => {
                                 {index === 1 && <Trophy size={24} className="text-slate-400" />}
                                 {index === 2 && <Trophy size={24} className="text-amber-700" />}
                             </div>
-                        )) : (
-                            <p className="p-4 text-center text-slate-500 dark:text-slate-400">Belum ada data di papan peringkat.</p>
-                        )}
+                        ))}
                     </div>
                 </div>
             )}
@@ -1245,7 +1141,7 @@ const Modal = ({ children, onClose }) => (
 const LoadingScreen = ({ message }) => (
     <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col items-center justify-center gap-6">
         <div className="relative w-24 h-24">
-            <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Loading Logo" className="w-full h-full animate-pulse" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/96x96/cccccc/ffffff?text=Loading...'; }} />
+            <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Loading Logo" className="w-full h-full animate-pulse" onError={(e) => e.target.outerHTML = '<Brain class="w-full h-full text-cyan-500 animate-pulse" />'} />
         </div>
         <p className="text-xl font-semibold text-slate-600 dark:text-slate-300 text-center max-w-xs">{message || 'Memuat...'}</p>
     </div>
@@ -1258,7 +1154,7 @@ const PWAInstallPopup = ({ onClose }) => {
         <Modal onClose={onClose}>
             <div className="text-center relative">
                 <button onClick={onClose} className="absolute -top-2 -right-2 text-slate-400 hover:text-slate-600"><X /></button>
-                <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="App Logo" className="w-20 h-20 mx-auto mb-4" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/80x80/cccccc/ffffff?text=AppLogo'; }} />
+                <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="App Logo" className="w-20 h-20 mx-auto mb-4" onError={(e) => e.target.outerHTML = '<Brain class="w-20 h-20 mx-auto mb-4 text-cyan-500" />'} />
                 <h2 className="text-2xl font-bold">Install Aplikasi Bdukasi</h2>
                 <p className="text-slate-500 dark:text-slate-400 mt-2 mb-6">Dapatkan pengalaman belajar terbaik dengan menginstal aplikasi di perangkatmu.</p>
                 <button onClick={handleInstallClick} className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-cyan-500 text-white font-bold rounded-lg hover:bg-cyan-600 transition-colors">
@@ -1320,7 +1216,7 @@ const Navbar = () => {
     return (
         <header className="sticky top-0 bg-white/70 dark:bg-slate-900/80 backdrop-blur-md z-10 border-b border-slate-200 dark:border-slate-700 md:hidden">
             <div className="px-4 h-16 flex items-center justify-between">
-                <div className="font-bold text-xl flex items-center gap-2"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-8 w-8" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/32x32/cccccc/ffffff?text=Logo'; }} /> Bdukasi</div>
+                <div className="font-bold text-xl flex items-center gap-2"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-8 w-8" onError={(e) => e.target.outerHTML = '<Brain class="h-8 w-8 text-cyan-500" />'} /> Bdukasi</div>
                 <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Menu /></button>
             </div>
         </header>
@@ -1347,10 +1243,10 @@ const Sidebar = () => {
         <>
             <div onClick={() => setSidebarOpen(false)} className={`fixed inset-0 bg-black/50 z-20 md:hidden transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}></div>
             <aside className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col z-30 transition-transform md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                 <div className="flex items-center gap-3 text-2xl font-bold mb-10"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-10 w-10" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/40x40/cccccc/ffffff?text=Logo'; }} /><span className="text-slate-800 dark:text-white">Bdukasi</span></div>
+                 <div className="flex items-center gap-3 text-2xl font-bold mb-10"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} /><span className="text-slate-800 dark:text-white">Bdukasi</span></div>
                 <nav className="flex-grow space-y-2">{navItems.map(item => (<button key={item.id} onClick={() => { setPage(item.id); setSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-4 py-3 rounded-lg transition-colors text-base ${page === item.id ? 'bg-cyan-500 text-white font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{React.cloneElement(item.icon, { className: page === item.id ? 'text-white' : 'text-slate-500' })}<span>{item.label}</span></button>))}</nav>
                 <div className="mt-auto">
-                    <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/50 mb-4"><img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName}&background=random&color=fff`} alt="Avatar" className="w-10 h-10 rounded-full" onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/40x40/cccccc/ffffff?text=${user?.displayName?.charAt(0) || 'U'}`; }} /><div className='overflow-hidden'><p className="font-semibold text-sm line-clamp-1">{user?.displayName}</p><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{user?.email}</p></div></div>
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/50 mb-4"><img src={user?.photoURL} alt="Avatar" className="w-10 h-10 rounded-full" /><div className='overflow-hidden'><p className="font-semibold text-sm line-clamp-1">{user?.displayName}</p><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{user?.email}</p></div></div>
                     <button onClick={logout} className="w-full flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 font-semibold"><LogOut size={20}/><span>Keluar</span></button>
                 </div>
             </aside>
@@ -1410,8 +1306,7 @@ const LearningMaterialScreen = () => {
                 {/* --- PENAMBAHAN KOMPONEN VIDEO DI SINI --- */}
                 <LearningVideosSection />
 
-                {/* Pastikan latihan_soal adalah array sebelum render */}
-                {latihan_soal && latihan_soal.length > 0 && <InfoCard icon={<BookMarked />} title="Latihan Soal"><QuizPlayer questions={latihan_soal} /></InfoCard>}
+                {latihan_soal?.length > 0 && <InfoCard icon={<BookMarked />} title="Latihan Soal"><QuizPlayer questions={latihan_soal} /></InfoCard>}
                 <div className="text-center pt-8">
                     <button onClick={() => handleMarkAsComplete(topic)} className="px-8 py-4 bg-green-500 text-white font-bold rounded-full shadow-lg hover:bg-green-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-3 group mx-auto">
                         <CheckCircle size={24} />
@@ -1444,9 +1339,9 @@ const curriculum = {
 };
 const LevelSelectionScreen = () => { const { setScreen, setLevel, setPage } = useContext(AppContext); return ( <AnimatedScreen customKey="level"> <div className="text-center pt-8"> <BackButton onClick={() => setPage('dashboard')} /> <School className="w-24 h-24 mx-auto text-cyan-500" /> <h1 className="text-4xl font-bold mt-4">Pilih Jenjang Pendidikan</h1> <p className="text-xl text-slate-500 dark:text-slate-400 mt-2 mb-12">Mulai dari sini untuk petualangan belajarmu.</p> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto"> {Object.keys(curriculum).map((lvl) => <button key={lvl} onClick={() => { setLevel(lvl); setScreen(lvl === 'SMA' ? 'trackSelection' : 'subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold flex flex-col items-center justify-center gap-4 cursor-pointer">{lvl}</button>)} </div> </div> </AnimatedScreen> ); };
 const TrackSelectionScreen = () => { const { setScreen, setTrack } = useContext(AppContext); return ( <AnimatedScreen customKey="track"> <BackButton onClick={() => setScreen('levelSelection')} /> <div className="text-center pt-8"> <h1 className="text-4xl font-bold mb-12">Pilih Jurusan</h1> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-2xl mx-auto"> {Object.keys(curriculum.SMA.tracks).map((trackName) => <button key={trackName} onClick={() => { setTrack(trackName); setScreen('subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold">{trackName}</button>)} </div> </div> </AnimatedScreen> ); };
-const SubjectSelectionScreen = () => { const { level, track, setScreen, setSubject } = useContext(AppContext); const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects; const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection'; if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>; return ( <AnimatedScreen customKey="subject"> <BackButton onClick={() => setScreen(backScreen)} /> <div className="pt-8"> <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1> <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto"> {/* Pastikan subjects adalah array sebelum map */} {subjects && subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)} </div> </div> </AnimatedScreen> ); };
+const SubjectSelectionScreen = () => { const { level, track, setScreen, setSubject } = useContext(AppContext); const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects; const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection'; if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>; return ( <AnimatedScreen customKey="subject"> <BackButton onClick={() => setScreen(backScreen)} /> <div className="pt-8"> <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1> <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto"> {subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)} </div> </div> </AnimatedScreen> ); };
 const DynamicIcon = ({ name, ...props }) => { const IconComponent = iconMap[name]; return IconComponent ? <IconComponent {...props} /> : <HelpCircle {...props} />; };
-const SubjectDashboardScreen = () => { const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext); const [inputValue, setInputValue] = useState(''); const [activeTab, setActiveTab] = useState('rekomendasi'); useEffect(() => { if (subject && recommendations.length === 0) fetchRecommendations(); }, [subject, fetchRecommendations, recommendations.length]); if (!subject) return <div className="text-center">Harap pilih mata pelajaran. <BackButton onClick={() => setScreen('subjectSelection')} /></div>; const handleSearchSubmit = (e) => { e.preventDefault(); if(inputValue.trim()) { setError(null); fetchLearningMaterial(inputValue); } else { setError("Topik pencarian tidak boleh kosong."); } }; return ( <AnimatedScreen customKey="dashboard"> <BackButton onClick={() => setScreen('subjectSelection')} /> <div className="text-center pt-8"><DynamicIcon name={subject.iconName} size={80} className="text-cyan-500 mx-auto mb-4" /><h1 className="text-4xl font-bold">Mata Pelajaran: {subject.name}</h1></div> <div className="w-full max-w-2xl mx-auto my-12"> <form onSubmit={handleSearchSubmit} className="relative"> <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Ketik topik untuk dipelajari..." className="w-full pl-6 pr-16 py-4 text-lg bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 rounded-full focus:ring-4 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all"/> <button type="submit" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition-transform active:scale-95"><Search className="w-6 h-6" /></button> </form> {error && <ErrorMessage message={error} />} </div> <div className="max-w-4xl mx-auto"> <div className="flex justify-center border-b border-slate-300 dark:border-slate-700 mb-6 flex-wrap">{['rekomendasi', 'riwayat', 'bank_soal'].map(tab => <TabButton key={tab} icon={{rekomendasi: <Sparkles/>, riwayat: <History/>, bank_soal: <BrainCircuit/>}[tab]} text={{rekomendasi: "Rekomendasi", riwayat: "Riwayat", bank_soal: "Bank Soal"}[tab]} isActive={activeTab===tab} onClick={() => setActiveTab(tab)}/>)}</div> <div className="animate-fadeInUp"> {/* Pastikan recommendations dan history tidak null sebelum map */} {activeTab === 'rekomendasi' && (recommendations && recommendations.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{recommendations.map((rec,i)=>(<ListItem key={i} text={rec} onClick={()=>fetchLearningMaterial(rec)}/>))}</div> : <p className="text-center text-slate-500">Guru AI sedang mencari rekomendasi...</p>)} {activeTab === 'riwayat' && (history && history.filter(h => h.subjectName === subject.name).length > 0 ? <div className="grid md:grid-cols-2 gap-4">{history.filter(h => h.subjectName === subject.name).map((h,i)=>(<ListItem key={i} text={h.topic} onClick={()=>fetchLearningMaterial(h.topic, true)}/>))}</div> : <p className="text-center text-slate-500">Belum ada riwayat belajar.</p>)} {activeTab === 'bank_soal' && <BankSoalGenerator />} </div> </div> </AnimatedScreen> ); };
+const SubjectDashboardScreen = () => { const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext); const [inputValue, setInputValue] = useState(''); const [activeTab, setActiveTab] = useState('rekomendasi'); useEffect(() => { if (subject && recommendations.length === 0) fetchRecommendations(); }, [subject, fetchRecommendations, recommendations.length]); if (!subject) return <div className="text-center">Harap pilih mata pelajaran. <BackButton onClick={() => setScreen('subjectSelection')} /></div>; const handleSearchSubmit = (e) => { e.preventDefault(); if(inputValue.trim()) { setError(null); fetchLearningMaterial(inputValue); } else { setError("Topik pencarian tidak boleh kosong."); } }; return ( <AnimatedScreen customKey="dashboard"> <BackButton onClick={() => setScreen('subjectSelection')} /> <div className="text-center pt-8"><DynamicIcon name={subject.iconName} size={80} className="text-cyan-500 mx-auto mb-4" /><h1 className="text-4xl font-bold">Mata Pelajaran: {subject.name}</h1></div> <div className="w-full max-w-2xl mx-auto my-12"> <form onSubmit={handleSearchSubmit} className="relative"> <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Ketik topik untuk dipelajari..." className="w-full pl-6 pr-16 py-4 text-lg bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 rounded-full focus:ring-4 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all"/> <button type="submit" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition-transform active:scale-95"><Search className="w-6 h-6" /></button> </form> {error && <ErrorMessage message={error} />} </div> <div className="max-w-4xl mx-auto"> <div className="flex justify-center border-b border-slate-300 dark:border-slate-700 mb-6 flex-wrap">{['rekomendasi', 'riwayat', 'bank_soal'].map(tab => <TabButton key={tab} icon={{rekomendasi: <Sparkles/>, riwayat: <History/>, bank_soal: <BrainCircuit/>}[tab]} text={{rekomendasi: "Rekomendasi", riwayat: "Riwayat", bank_soal: "Bank Soal"}[tab]} isActive={activeTab===tab} onClick={() => setActiveTab(tab)}/>)}</div> <div className="animate-fadeInUp"> {activeTab === 'rekomendasi' && (recommendations.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{recommendations.map((rec,i)=>(<ListItem key={i} text={rec} onClick={()=>fetchLearningMaterial(rec)}/>))}</div> : <p className="text-center text-slate-500">Guru AI sedang mencari rekomendasi...</p>)} {activeTab === 'riwayat' && (history.filter(h => h.subjectName === subject.name).length > 0 ? <div className="grid md:grid-cols-2 gap-4">{history.filter(h => h.subjectName === subject.name).map((h,i)=>(<ListItem key={i} text={h.topic} onClick={()=>fetchLearningMaterial(h.topic, true)}/>))}</div> : <p className="text-center text-slate-500">Belum ada riwayat belajar.</p>)} {activeTab === 'bank_soal' && <BankSoalGenerator />} </div> </div> </AnimatedScreen> ); };
 const BankSoalGenerator = () => { const { setError, fetchBankSoal } = useContext(AppContext); const [topic, setTopic] = useState(''); const [count, setCount] = useState(5); const handleSubmit = (e) => { e.preventDefault(); if (!topic.trim()) { setError("Topik soal tidak boleh kosong."); return; } if (count < 1 || count > 20) { setError("Jumlah soal harus antara 1 dan 20."); return; } setError(null); fetchBankSoal(topic, count); }; return ( <div className="max-w-xl mx-auto bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700"> <h3 className="text-xl font-bold text-center mb-4">🎯 Bank Soal Berbasis Topik</h3> <p className="text-center text-slate-500 dark:text-slate-400 mb-4">Masukkan topik spesifik dan jumlah soal.</p> <form onSubmit={handleSubmit} className="space-y-4"> <input type="text" value={topic} onChange={e => setTopic(e.target.value)} placeholder='Contoh: Perang Diponegoro' className='w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' /> <div className="flex flex-col sm:flex-row gap-4"> <input type="number" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} min="1" max="20" className='w-full sm:w-1/3 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' /> <button type="submit" className="w-full sm:w-2/3 p-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors disabled:bg-slate-500">Buatkan Soal!</button> </div> </form> </div> ); };
 const TabButton = ({icon, text, isActive, onClick}) => <button onClick={onClick} className={`flex items-center gap-2 px-4 py-3 sm:px-6 font-semibold border-b-2 transition-all ${isActive ? 'text-cyan-500 border-cyan-500' : 'text-slate-500 border-transparent hover:text-cyan-500'}`}>{React.cloneElement(icon, {size: 20})} <span className="hidden sm:inline">{text}</span></button>;
 const ListItem = ({text, onClick}) => <button onClick={onClick} className="w-full text-left flex justify-between items-center p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-cyan-500 rounded-lg transition-all"><span className="font-semibold">{text}</span><ChevronRight /></button>;
