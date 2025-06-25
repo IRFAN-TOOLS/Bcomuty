@@ -1207,8 +1207,9 @@ const LeaderboardPage = () => {
                 // [FIX 2] Sorting di client side setelah fetch
                 usersWithScores.sort((a, b) => b.score - a.score);
                 setLeaderboardData(usersWithScores);
-            } catch (error) => {
-                console.error("Failed to fetch leaderboard:", error);
+            } catch (error) {
+    console.error("Failed to fetch leaderboard:", error);
+}
             } finally {
                 setLoading(false);
             }
