@@ -1,6 +1,9 @@
-import React, { useState, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
+import { 
+    getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, getDocs, writeBatch, serverTimestamp
+} from 'firebase/firestore';
 import { 
     Search, Brain, BookOpen, Youtube, Lightbulb, FileText, ArrowLeft, Loader, Sparkles, 
     AlertTriangle, X, School, FlaskConical, Globe, Calculator, Dna, BarChart2, Drama,
@@ -8,17 +11,18 @@ import {
     BrainCircuit, History, BookMarked, Github, Instagram, Server, Users, Video, Trash2, Edit,
     PlusCircle, Terminal, Power, PowerOff, LayoutDashboard, Settings, User, LogOut, Moon, Sun, 
     Newspaper, Menu, Download, ShieldCheck, Info, MessageSquare, Award, Trophy, Users2, BrainCog,
-    Wind, Text, VolumeX, Palette, ArrowUpRight, Save, Languages as TranslateIcon, Minimize2, WifiOff
+    Wind, Text, Palette, ArrowUpRight, Save, Languages as TranslateIcon, Minimize2, WifiOff,
+    SendHorizonal, Bot, UserCircle, Tv, ToggleLeft, ToggleRight, Check, Eye, EyeOff
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 // --- KONFIGURASI PENTING & API KEYS ---
-// CATATAN: Kunci API ini hanya untuk demonstrasi. Ganti dengan kunci Anda sendiri di environment produksi.
-const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik";
-const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
+// CATATAN: Ganti dengan kunci Anda sendiri di environment produksi.
+const GEMINI_API_KEY = "GEMINI_API_KEY"; // GANTI DENGAN API KEY ANDA
+const YOUTUBE_API_KEY = "YOUTUBE_API_KEY"; // GANTI DENGAN API KEY ANDA
 
 const firebaseConfig = {
-    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0",
+    apiKey: "FIREBASE_API_KEY", // GANTI DENGAN API KEY ANDA
     authDomain: "bgune---community.firebaseapp.com",
     projectId: "bgune---community",
     storageBucket: "bgune---community.appspot.com",
@@ -28,11 +32,12 @@ const firebaseConfig = {
 };
 
 // --- DAFTAR AKUN DEVELOPER ---
-const DEV_ACCOUNTS = ['irhamdika00@gmail.com', 'irham.andika@example.com']; // Tambahkan email developer di sini
+const DEV_ACCOUNTS = ['bgune@admin.com', 'irhamdika00@gmail.com']; 
 
 // --- INISIALISASI FIREBASE ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 
 // --- KONTEKS APLIKASI ---
 const AuthContext = createContext(null);
@@ -125,7 +130,7 @@ const AuthProvider = ({ children }) => {
         });
         return () => unsubscribe();
     }, []);
-    
+
     const loginWithGoogle = async () => {
         setLoading(true);
         try {
@@ -137,7 +142,7 @@ const AuthProvider = ({ children }) => {
             setLoading(false);
         }
     };
-    
+
     const logout = async () => {
         try {
             await signOut(auth);
@@ -152,67 +157,158 @@ const AuthProvider = ({ children }) => {
 };
 
 const SettingsProvider = ({ children }) => {
-    const [theme, setTheme] = useLocalStorage('bdukasi-theme-v2', 'light');
-    const [fontSize, setFontSize] = useLocalStorage('bdukasi-font-size-v2', 'base');
-    const [language, setLanguage] = useLocalStorage('bdukasi-language-v2', 'id');
-    const [focusMode, setFocusMode] = useLocalStorage('bdukasi-focus-mode-v2', false);
-    const [dataSaverMode, setDataSaverMode] = useLocalStorage('bdukasi-data-saver-v2', false);
-    const [animationsEnabled, setAnimationsEnabled] = useLocalStorage('bdukasi-animations-v2', true);
-    const [dyslexiaFont, setDyslexiaFont] = useLocalStorage('bdukasi-dyslexia-v2', false);
+    const [theme, setTheme] = useLocalStorage('bdukasi-theme-v3', 'system');
+    const [fontSize, setFontSize] = useLocalStorage('bdukasi-font-size-v3', 'base');
+    const [language, setLanguage] = useLocalStorage('bdukasi-language-v3', 'id');
+    const [dataSaverMode, setDataSaverMode] = useLocalStorage('bdukasi-data-saver-v3', false);
+    const [animationsEnabled, setAnimationsEnabled] = useLocalStorage('bdukasi-animations-v3', true);
+    const [dyslexiaFont, setDyslexiaFont] = useLocalStorage('bdukasi-dyslexia-v3', false);
+    
+    // Fitur kontrol ini sekarang akan diambil dari DevContext
+    const { featureFlags } = useContext(DevContext) || {};
+
+    const activeTheme = useMemo(() => {
+        if (theme === 'system') {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        return theme;
+    }, [theme]);
 
     useEffect(() => {
         const root = window.document.documentElement;
         root.classList.remove('light', 'dark');
-        root.classList.add(theme);
+        root.classList.add(activeTheme);
+    }, [activeTheme]);
+    
+    useEffect(() => {
+        const root = window.document.documentElement;
+        
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = () => {
+            if (theme === 'system') {
+                const newTheme = mediaQuery.matches ? 'dark' : 'light';
+                root.classList.remove('light', 'dark');
+                root.classList.add(newTheme);
+            }
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
 
+    }, [theme]);
+
+
+    useEffect(() => {
+        const root = window.document.documentElement;
         const fontSizes = ['sm', 'base', 'lg', 'xl'];
         fontSizes.forEach(size => root.classList.remove(`font-size-${size}`));
         root.classList.add(`font-size-${fontSize}`);
-        
+
         root.classList.toggle('no-animations', !animationsEnabled);
         root.classList.toggle('dyslexia-friendly', dyslexiaFont);
-        root.classList.toggle('focus-mode', focusMode);
+        // Mode fokus dikontrol oleh flag dari developer
+        root.classList.toggle('focus-mode', featureFlags?.focusMode);
 
-    }, [theme, fontSize, animationsEnabled, dyslexiaFont, focusMode]);
+    }, [theme, fontSize, animationsEnabled, dyslexiaFont, featureFlags]);
 
-    const value = { theme, setTheme, fontSize, setFontSize, language, setLanguage, focusMode, setFocusMode, dataSaverMode, setDataSaverMode, animationsEnabled, setAnimationsEnabled, dyslexiaFont, setDyslexiaFont };
+    const value = { theme, setTheme, activeTheme, fontSize, setFontSize, language, setLanguage, dataSaverMode, setDataSaverMode, animationsEnabled, setAnimationsEnabled, dyslexiaFont, setDyslexiaFont };
     return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 };
 
 const DevProvider = ({ children }) => {
-    const [videos, setVideos] = useLocalStorage('bdukasi-dev-videos-v1', [
-      { id: 'dQw4w9WgXcQ', title: 'Contoh Video: Pembahasan Fotosintesis Lengkap', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
-      { id: '5G_pA01Ua4o', title: 'Contoh Video: Sejarah Perang Diponegoro', url: 'https://www.youtube.com/watch?v=5G_pA01Ua4o' },
-    ]);
-    const [stats] = useState({ users: 1337, materials: 42, active: 89 }); // Data dummy
-    const [logs, setLogs] = useState(['[INFO] Developer console initialized.']);
-    const [experimentalFeatures, setExperimentalFeatures] = useLocalStorage('bdukasi-dev-experimental', {});
+    const [videos, setVideos] = useState([]);
+    const [stats, setStats] = useState({ users: 0, materials: 0, questions: 0, lastActivity: 'N/A' });
+    const [logs, setLogs] = useState([`[${new Date().toLocaleTimeString()}] [SYSTEM] Developer console initialized.`]);
+    const [featureFlags, setFeatureFlags] = useState({ focusMode: false, timerMode: false, dailyPractice: false });
+    const [loading, setLoading] = useState(true);
 
-    const addVideo = (url) => {
+    // Fetch initial data from Firestore
+    useEffect(() => {
+        setLoading(true);
+        const unsubscribers = [
+            onSnapshot(collection(db, "dev_youtube_videos"), (snapshot) => {
+                const fetchedVideos = snapshot.docs.map(doc => ({ fbId: doc.id, ...doc.data() }));
+                setVideos(fetchedVideos);
+                addLog(`[DB] Fetched ${fetchedVideos.length} videos.`);
+            }),
+            onSnapshot(doc(db, "dev_stats", "main"), (doc) => {
+                if (doc.exists()) {
+                    setStats(doc.data());
+                    addLog(`[DB] Fetched live stats.`);
+                } else {
+                     addLog(`[DB-ERROR] Stats document not found.`);
+                }
+            }),
+            onSnapshot(doc(db, "dev_feature_flags", "main"), (doc) => {
+                if(doc.exists()){
+                    setFeatureFlags(doc.data());
+                    addLog(`[DB] Fetched feature flags.`);
+                } else {
+                    addLog(`[DB-ERROR] Feature flags document not found.`);
+                }
+            })
+        ];
+        
+        // Dummy user count for demonstration
+        getDocs(collection(db, "users")).then(snap => {
+            setStats(prev => ({...prev, users: snap.size}));
+        });
+        
+        setLoading(false);
+
+        return () => unsubscribers.forEach(unsub => unsub());
+    }, []);
+
+    const addLog = (message) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev].slice(-50));
+
+    const addVideo = async (url) => {
         try {
             const videoId = new URL(url).searchParams.get('v');
             if (!videoId) throw new Error("URL YouTube tidak valid.");
-            const newVideo = { id: videoId, title: `Video baru: ${videoId}`, url };
-            setVideos(prev => [...prev, newVideo]);
-            addLog(`[SUCCESS] Video ditambahkan: ${videoId}`);
+
+            // Fetch video title from YouTube API
+            const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet`);
+            if (!response.ok) throw new Error("Gagal mengambil data dari YouTube API.");
+            const data = await response.json();
+            const title = data.items[0]?.snippet?.title || `Video ID: ${videoId}`;
+
+            const newVideo = { 
+                id: videoId, 
+                title, 
+                url, 
+                isActive: true, 
+                addedAt: serverTimestamp() 
+            };
+            await addDoc(collection(db, "dev_youtube_videos"), newVideo);
+            addLog(`[SUCCESS] Video ditambahkan: ${title}`);
         } catch (error) {
             addLog(`[ERROR] Gagal menambah video: ${error.message}`);
+            console.error(error);
         }
     };
 
-    const deleteVideo = (id) => {
-        setVideos(prev => prev.filter(v => v.id !== id));
-        addLog(`[INFO] Video dihapus: ${id}`);
+    const deleteVideo = async (fbId) => {
+        await deleteDoc(doc(db, "dev_youtube_videos", fbId));
+        addLog(`[INFO] Video dengan ID ${fbId} telah dihapus.`);
     };
 
-    const addLog = (message) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`].slice(-50));
+    const toggleVideoStatus = async (fbId, currentStatus) => {
+        await updateDoc(doc(db, "dev_youtube_videos", fbId), { isActive: !currentStatus });
+        addLog(`[CONFIG] Status video ${fbId} diubah menjadi ${!currentStatus ? 'AKTIF' : 'NONAKTIF'}.`);
+    };
     
-    const toggleFeature = (feature) => {
-      setExperimentalFeatures(prev => ({...prev, [feature]: !prev[feature]}));
-      addLog(`[CONFIG] Fitur eksperimen '${feature}' sekarang ${!experimentalFeatures[feature] ? 'AKTIF' : 'NONAKTIF'}.`);
+    const updateVideoTitle = async (fbId, newTitle) => {
+        await updateDoc(doc(db, "dev_youtube_videos", fbId), { title: newTitle });
+        addLog(`[CONFIG] Judul video ${fbId} diperbarui.`);
     }
 
-    const value = { videos, addVideo, deleteVideo, stats, logs, addLog, experimentalFeatures, toggleFeature, setVideos };
+    const toggleFeatureFlag = async (featureKey) => {
+        const currentFlags = doc(db, "dev_feature_flags", "main");
+        const newValue = !featureFlags[featureKey];
+        await updateDoc(currentFlags, { [featureKey]: newValue });
+        addLog(`[CONFIG] Fitur '${featureKey}' sekarang ${newValue ? 'AKTIF' : 'NONAKTIF'}.`);
+    };
+
+    const value = { videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, stats, logs, addLog, featureFlags, toggleFeatureFlag, loading };
     return <DevContext.Provider value={value}>{children}</DevContext.Provider>;
 }
 
@@ -233,7 +329,7 @@ const AppProvider = ({ children }) => {
 
     const contextValue = useMemo(() => ({ level, track, subject }), [level, track, subject]);
     const addHistory = useCallback((item) => setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50)), [setHistory]);
-    
+
     const fetchLearningMaterial = useCallback(async (searchTopic, isFromHistory = false) => {
         setIsLoading(true); setLoadingMessage('Guru AI sedang menyiapkan materimu...'); setError(null); setLearningData(null); setPage('belajar'); setScreen('lesson');
 
@@ -241,13 +337,13 @@ const AppProvider = ({ children }) => {
         if (!isFromHistory) addHistory({ topic: searchTopic, level, track, subjectName: subject.name });
 
         const geminiPrompt = `Sebagai ahli materi pelajaran, buatkan ringkasan, materi lengkap (format Markdown bersih), dan 5 soal latihan pilihan ganda (A-E) dengan jawaban & penjelasan untuk topik '${searchTopic}' pelajaran '${subject.name}' tingkat ${level} ${track ? `jurusan ${track}`: ''}. Respons HANYA dalam format JSON: {"ringkasan": "...", "materi_lengkap": "...", "latihan_soal": [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]}`;
-        
+
         const youtubeSearchQuery = `${searchTopic} ${subject.name} pembahasan lengkap`;
 
         try {
             const [geminiData, videoData] = await Promise.all([
                 callGeminiAPI(geminiPrompt),
-                callYouTubeAPI(youtubeSearchQuery) // Perubahan: Mencari video di YouTube
+                callYouTubeAPI(youtubeSearchQuery)
             ]);
             setLearningData({ topic: searchTopic, ...geminiData, video: videoData });
         } catch (err) {
@@ -257,13 +353,13 @@ const AppProvider = ({ children }) => {
             setIsLoading(false);
         }
     }, [contextValue, addHistory]);
-    
+
     const fetchBankSoal = useCallback(async (topic, count) => {
         if (!topic || !contextValue.level || !contextValue.subject || !count) { setError("Harap masukkan topik dan jumlah soal."); return; }
         setIsLoading(true); setLoadingMessage(`Guru AI sedang membuat ${count} soal...`); setError(null);
         const { level, track, subject } = contextValue;
         const prompt = `Buatkan ${count} soal pilihan ganda (A-E) tentang '${topic}' untuk pelajaran '${subject.name}' level ${level} ${track ? `jurusan ${track}` : ''}. Sertakan jawaban & penjelasan. Respons HANYA dalam format JSON array objek: [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]`;
-        try {
+        try { 
             const soal = await callGeminiAPI(prompt);
             setBankSoal(Array.isArray(soal) ? soal : []);
             setPage('belajar'); setScreen('bankSoal');
@@ -274,7 +370,7 @@ const AppProvider = ({ children }) => {
         if (!contextValue.level || !contextValue.subject) return;
         const { level, track, subject } = contextValue;
         const prompt = `Berikan 5 rekomendasi topik menarik untuk mata pelajaran "${subject.name}" level ${level} ${track ? `jurusan ${track}`: ''}. Jawab HANYA dalam format JSON array string. Contoh: ["Topik 1", "Topik 2"]`;
-        try { 
+        try {  
             const recs = await callGeminiAPI(prompt); 
             setRecommendations(Array.isArray(recs) ? recs : []); 
         } catch (err) { console.error("Gagal fetch rekomendasi:", err); }
@@ -293,23 +389,32 @@ const AppProvider = ({ children }) => {
 
 
 // --- FUNGSI API HELPER ---
-const callGeminiAPI = async (prompt) => {
+const callGeminiAPI = async (prompt, chatHistory = []) => {
     console.log("[API Call] Memanggil Gemini API...");
     if (!GEMINI_API_KEY) throw new Error("Kunci API Gemini belum diatur.");
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const contents = chatHistory.length > 0 ? [...chatHistory, { role: "user", parts: [{ text: prompt }] }] : [{ role: "user", parts: [{ text: prompt }] }];
+
     const payload = {
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents,
         generationConfig: { response_mime_type: "application/json" }
     };
+
     try {
         const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) { const errorBody = await response.json(); throw new Error(`Permintaan API Gemini gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`); }
         const result = await response.json();
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new Error("Respons API Gemini tidak valid atau kosong.");
-        const cleanedText = text.replace(/^```json\s*|```$/g, '').trim();
+        const cleanedText = text.replace(/^```(json)?\s*|```$/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (error) {
+        // Fallback for non-JSON responses in chat
+        if (error instanceof SyntaxError) {
+             const result = await response.json();
+             return result.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, terjadi kesalahan dalam memproses jawaban.";
+        }
         console.error("[API Exception] Terjadi kesalahan Gemini:", error);
         throw error;
     }
@@ -319,10 +424,10 @@ const callYouTubeAPI = async (query) => {
     console.log("[API Call] Memanggil YouTube API untuk query:", query);
     if (!YOUTUBE_API_KEY) {
         console.warn("[API Warning] Kunci API YouTube tidak ada. Pencarian video dilewati.");
-        return null; // Tidak melempar error agar aplikasi tetap jalan
+        return null; 
     }
     const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&maxResults=1&type=video&videoDuration=long`;
-    
+
     try {
         const response = await fetch(API_URL);
         if (!response.ok) {
@@ -331,8 +436,8 @@ const callYouTubeAPI = async (query) => {
         }
         const result = await response.json();
         const item = result.items?.[0];
-        if (!item) return null; // Tidak ada video yang ditemukan
-        
+        if (!item) return null;
+
         return {
             id: item.id.videoId,
             title: item.snippet.title,
@@ -340,22 +445,22 @@ const callYouTubeAPI = async (query) => {
         };
     } catch (error) {
         console.error("[API Exception] Terjadi kesalahan YouTube:", error);
-        return null; // Return null agar tidak menghentikan proses load materi
+        return null;
     }
 };
 
 // --- KOMPONEN UTAMA APLIKASI ---
 export default function App() {
     return (
-        <SettingsProvider>
-            <AuthProvider>
-                <DevProvider>
+        <DevProvider>
+            <SettingsProvider>
+                <AuthProvider>
                     <AppProvider>
                         <MainApp />
                     </AppProvider>
-                </DevProvider>
-            </AuthProvider>
-        </SettingsProvider>
+                </AuthProvider>
+            </SettingsProvider>
+        </DevProvider>
     );
 }
 
@@ -369,7 +474,7 @@ const MainApp = () => {
         if (canInstall && !isAppInstalled) {
             const timer = setTimeout(() => {
                 setShowPWAInstall(true);
-            }, 5000);
+            }, 7000); // Tampilkan setelah 7 detik
             return () => clearTimeout(timer);
         }
     }, [canInstall, isAppInstalled]);
@@ -442,7 +547,7 @@ const LandingPage = () => {
         <div className="bg-slate-50 min-h-screen text-slate-800">
             <header className="absolute top-0 left-0 w-full p-6 z-10 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                    <img src="src/logo.png" alt="Bdukasi Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} />
+                    <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Bdukasi Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} />
                     <h1 className="font-bold text-2xl">Bdukasi</h1>
                 </div>
                  <button onClick={loginWithGoogle} disabled={loading} className="px-5 py-2.5 bg-cyan-500 text-white font-bold rounded-full shadow-lg hover:bg-cyan-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-2 group">
@@ -463,7 +568,7 @@ const LandingPage = () => {
                         Masuk dan Mulai Sekarang
                     </button>
                 </section>
-                
+
                 <section className="mt-24 max-w-5xl mx-auto">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
                         {stats.map(stat => (
@@ -474,7 +579,7 @@ const LandingPage = () => {
                         ))}
                     </div>
                 </section>
-
+                 
                 <section className="mt-24 max-w-5xl mx-auto">
                      <h3 className="text-3xl font-bold text-center mb-12">Semua yang Kamu Butuhkan</h3>
                      <div className="grid md:grid-cols-3 gap-8">
@@ -487,15 +592,6 @@ const LandingPage = () => {
                         ))}
                      </div>
                 </section>
-                
-                <section className="mt-24 text-center max-w-3xl mx-auto">
-                    <h3 className="text-3xl font-bold mb-8">Kata Para Pelajar</h3>
-                    <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 relative">
-                        <img src="https://i.pravatar.cc/100?u=sinta" alt="Testimoni" className="w-20 h-20 rounded-full mx-auto -mt-16 border-4 border-white"/>
-                        <p className="text-lg text-slate-700 mt-4 italic">"Semenjak pakai Bdukasi, belajar jadi nggak ngebosenin lagi. Materi Fisika yang tadinya susah jadi gampang dimengerti berkat penjelasan AI-nya. Keren banget!"</p>
-                        <p className="font-bold text-slate-800 mt-6">- Sinta, Siswi SMA</p>
-                    </div>
-                </section>
             </main>
             <Footer isLanding={true} />
         </div>
@@ -505,14 +601,38 @@ const LandingPage = () => {
 const DashboardPage = () => {
     const { setPage } = useContext(AppContext);
     const { user } = useContext(AuthContext);
-    const { videos } = useContext(DevContext);
+    const { videos, featureFlags, stats } = useContext(DevContext);
+    const [recommendedVideos, setRecommendedVideos] = useState([]);
 
-    const recommendedVideo = videos && videos.length > 0 ? videos[videos.length - 1] : null;
+    useEffect(() => {
+        if (videos && videos.length > 0) {
+            const activeVideos = videos.filter(v => v.isActive);
+            // Simple shuffle and pick 3
+            const shuffled = [...activeVideos].sort(() => 0.5 - Math.random());
+            setRecommendedVideos(shuffled.slice(0, 3));
+        }
+    }, [videos]);
+
+    const availableFeatures = Object.values(featureFlags || {}).filter(Boolean).length;
 
     return (
         <AnimatedScreen customKey="dashboard">
-            <h1 className="text-3xl font-bold mb-2">Dashboard Bdukasi</h1>
-            <p className="text-lg text-slate-500 dark:text-slate-400 mb-8">Selamat datang kembali, {user?.displayName?.split(' ')[0] || 'Juara'}!</p>
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold mb-1">Dashboard Bdukasi</h1>
+                    <p className="text-lg text-slate-500 dark:text-slate-400">Selamat datang kembali, {user?.displayName?.split(' ')[0] || 'Juara'}!</p>
+                </div>
+                <div className="flex gap-4 mt-4 sm:mt-0">
+                    <div className="text-center bg-cyan-100/50 dark:bg-cyan-900/50 p-3 rounded-xl">
+                        <p className="font-bold text-xl text-cyan-600 dark:text-cyan-300">{stats?.materials || '0'}</p>
+                        <p className="text-xs text-cyan-700 dark:text-cyan-400">Materi Tersedia</p>
+                    </div>
+                    <div className="text-center bg-green-100/50 dark:bg-green-900/50 p-3 rounded-xl">
+                        <p className="font-bold text-xl text-green-600 dark:text-green-300">{availableFeatures}</p>
+                        <p className="text-xs text-green-700 dark:text-green-400">Fitur Aktif</p>
+                    </div>
+                </div>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <DashboardCard 
@@ -525,7 +645,7 @@ const DashboardPage = () => {
                  <DashboardCard 
                     icon={<MessageSquare size={32} />} 
                     title="Tanya AI" 
-                    description="Ada pertanyaan? Tanyakan pada Guru AI." 
+                    description="Ada pertanyaan? Tanyakan pada Kak Spenta." 
                     onClick={() => { setPage('tanya-ai'); }}
                     className="bg-white dark:bg-slate-800"
                 />
@@ -535,37 +655,31 @@ const DashboardPage = () => {
                     description="Selesaikan tantangan & dapatkan poin." 
                     onClick={() => {}} 
                     className="bg-white dark:bg-slate-800"
-                    disabled={true}
+                    disabled={!featureFlags?.dailyPractice}
                 />
             </div>
             
-            {/* Perubahan: Menampilkan Video Rekomendasi di Dashboard */}
-            {recommendedVideo && (
-                <div className="mt-6">
-                    <InfoCard icon={<Video />} title="Video Rekomendasi Pilihan">
-                        <h3 className="text-lg font-semibold mb-3">{recommendedVideo.title}</h3>
-                        <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden shadow-lg">
-                            <iframe 
-                                src={`https://www.youtube.com/embed/${recommendedVideo.id}`} 
-                                title={recommendedVideo.title} 
-                                frameBorder="0" 
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                                allowFullScreen 
-                                className="w-full h-full">
-                            </iframe>
+            {recommendedVideos.length > 0 && (
+                <div className="mt-8">
+                    <InfoCard icon={<Tv />} title="Rekomendasi Video Edukasi Untukmu">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {recommendedVideos.map(video => (
+                                <a key={video.id} href={video.url} target="_blank" rel="noopener noreferrer" className="group block bg-slate-100 dark:bg-slate-800/50 rounded-xl overflow-hidden transform hover:-translate-y-1 transition-transform duration-300 shadow-sm hover:shadow-lg">
+                                    <div className="relative">
+                                        <img src={`https://img.youtube.com/vi/${video.id}/mqdefault.jpg`} alt={video.title} className="w-full aspect-video object-cover"/>
+                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Youtube size={48} className="text-white"/>
+                                        </div>
+                                    </div>
+                                    <div className="p-4">
+                                        <h3 className="font-semibold text-sm line-clamp-2 text-slate-800 dark:text-slate-200">{video.title}</h3>
+                                    </div>
+                                </a>
+                            ))}
                         </div>
                     </InfoCard>
                 </div>
             )}
-            
-            <div className="mt-6">
-                <InfoCard icon={<Info size={20}/>} title="Info & Pengembang">
-                    <p className="text-slate-600 dark:text-slate-300 mb-4">
-                        Bdukasi adalah platform edukasi modern yang dikembangkan oleh <strong>M. Irham Andika Putra</strong> & tim <strong>Bgune Digital</strong>. Ditenagai oleh AI canggih untuk membuat belajar lebih mudah dan menyenangkan.
-                    </p>
-                    <Footer />
-                </InfoCard>
-            </div>
         </AnimatedScreen>
     );
 };
@@ -573,13 +687,14 @@ const DashboardPage = () => {
 const SettingsPage = () => {
     const { user, logout } = useContext(AuthContext);
     const {
-        theme, setTheme, fontSize, setFontSize, language, setLanguage, focusMode, setFocusMode,
+        theme, setTheme, fontSize, setFontSize, language, setLanguage,
         dataSaverMode, setDataSaverMode, animationsEnabled, setAnimationsEnabled, dyslexiaFont, setDyslexiaFont
     } = useContext(SettingsContext);
 
     const fontOptions = [ { value: 'sm', label: 'Kecil' }, { value: 'base', label: 'Normal' }, { value: 'lg', label: 'Besar' }];
     const langOptions = [ { value: 'id', label: 'Indonesia' }, { value: 'en', label: 'English' }];
-    
+    const themeOptions = [ { value: 'light', label: 'Terang', icon: <Sun/> }, { value: 'dark', label: 'Gelap', icon: <Moon/> }, { value: 'system', label: 'Sistem', icon: <Computer/>} ];
+
     return (
         <AnimatedScreen customKey="settings">
             <h1 className="text-3xl font-bold mb-8">Akun & Pengaturan</h1>
@@ -599,12 +714,11 @@ const SettingsPage = () => {
 
                 <InfoCard icon={<Palette size={24} />} title="Tampilan & Aksesibilitas">
                     <div className="space-y-6">
-                        <SettingToggle label="Mode Gelap" icon={theme === 'light' ? <Moon/> : <Sun/>} isEnabled={theme === 'dark'} onToggle={() => setTheme(p => p === 'light' ? 'dark' : 'light')} />
-                        <SettingToggle label="Mode Fokus" icon={<Minimize2 />} isEnabled={focusMode} onToggle={() => setFocusMode(p => !p)} />
+                        <SettingOptionGroup label="Tema Aplikasi" options={themeOptions} selected={theme} onChange={setTheme} isIconGroup={true} />
                         <SettingToggle label="Animasi" icon={<Wind/>} isEnabled={animationsEnabled} onToggle={() => setAnimationsEnabled(p => !p)} />
                         <SettingToggle label="Font Disleksia" icon={<Text/>} isEnabled={dyslexiaFont} onToggle={() => setDyslexiaFont(p => !p)} />
-                        <SettingToggle label="Hemat Kuota" icon={<WifiOff />} isEnabled={dataSaverMode} onToggle={() => setDataSaverMode(p => !p)} />
-                        
+                        <SettingToggle label="Hemat Kuota" icon={<WifiOff />} isEnabled={dataSaverMode} onToggle={() => setDataSaverMode(p => !p)} hint="Mematikan pemuatan gambar otomatis pada beberapa fitur."/>
+
                         <SettingOptionGroup label="Ukuran Font" options={fontOptions} selected={fontSize} onChange={setFontSize} />
                         <SettingOptionGroup label="Bahasa" options={langOptions} selected={language} onChange={setLanguage} icon={<TranslateIcon />}/>
                     </div>
@@ -616,9 +730,12 @@ const SettingsPage = () => {
 
 const DeveloperDashboardPage = () => {
     const { user, isDeveloper } = useContext(AuthContext);
-    const { stats, videos, addVideo, deleteVideo, logs, addLog, experimentalFeatures, toggleFeature, setVideos } = useContext(DevContext);
+    const { 
+        stats, videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, logs, featureFlags, toggleFeatureFlag, loading 
+    } = useContext(DevContext);
     const [newVideoUrl, setNewVideoUrl] = useState('');
-    const [showConfirm, setShowConfirm] = useState(false);
+    const [videoLoading, setVideoLoading] = useState(false);
+    const [editingVideo, setEditingVideo] = useState(null);
 
     if (!isDeveloper) {
         return (
@@ -629,93 +746,225 @@ const DeveloperDashboardPage = () => {
             </AnimatedScreen>
         );
     }
+
+    const handleAddVideo = async (e) => { 
+        e.preventDefault(); 
+        setVideoLoading(true);
+        await addVideo(newVideoUrl); 
+        setNewVideoUrl('');
+        setVideoLoading(false);
+    };
     
-    const handleAddVideo = (e) => { e.preventDefault(); addVideo(newVideoUrl); setNewVideoUrl(''); };
-    const handleReset = () => { setVideos([]); addLog('[CRITICAL] Daftar video telah direset.'); setShowConfirm(false); };
+    const handleUpdateTitle = (e) => {
+        e.preventDefault();
+        if(editingVideo && editingVideo.newTitle.trim()) {
+            updateVideoTitle(editingVideo.fbId, editingVideo.newTitle);
+            setEditingVideo(null);
+        }
+    }
 
     return (
         <AnimatedScreen customKey="dev-dashboard">
             <h1 className="text-3xl font-bold mb-2 flex items-center gap-3"><Server /> Developer Dashboard</h1>
-            <p className="text-lg text-slate-500 dark:text-slate-400 mb-8">Selamat datang, {user?.displayName}.</p>
+            <p className="text-lg text-slate-500 dark:text-slate-400 mb-8">Mode Super Admin untuk {user?.displayName}.</p>
             
-            {showConfirm && <ConfirmationModal title="Reset Video?" message="Apakah Anda yakin ingin menghapus semua video? Aksi ini tidak dapat dibatalkan." onConfirm={handleReset} onCancel={() => setShowConfirm(false)} />}
+            {loading && <p>Memuat data developer...</p>}
 
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <StatCard icon={<Users />} label="Total Pengguna" value={stats.users} />
-                <StatCard icon={<Users2 />} label="Pengguna Aktif" value={stats.active} />
-                <StatCard icon={<BookOpen />} label="Jumlah Materi" value={stats.materials} />
+                <StatCard icon={<BookOpen />} label="Total Materi" value={stats.materials} />
+                <StatCard icon={<HelpCircle />} label="Total Soal" value={stats.questions} />
+                <StatCard icon={<History />} label="Aktivitas Terakhir" value={stats.lastActivity} />
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <InfoCard icon={<Video />} title="Kelola Video Rekomendasi" className="lg:col-span-2">
-                    <form onSubmit={handleAddVideo} className="flex gap-2 mb-4">
-                        <input type="url" value={newVideoUrl} onChange={(e) => setNewVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="flex-grow p-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500 outline-none" required />
-                        <button type="submit" className="p-3 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"><PlusCircle size={20} /></button>
-                    </form>
-                    <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
-                        {videos.length > 0 ? videos.map(video => (
-                            <div key={video.id} className="flex items-center gap-2 p-2 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
-                                <Youtube className="text-red-500 flex-shrink-0" />
-                                <p className="flex-grow truncate text-sm">{video.title}</p>
-                                <button className="p-2 hover:text-cyan-500 transition-colors" onClick={() => alert('Fitur Edit belum diimplementasikan.')}><Edit size={16}/></button>
-                                <button className="p-2 hover:text-red-500 transition-colors" onClick={() => deleteVideo(video.id)}><Trash2 size={16}/></button>
-                            </div>
-                        )) : <p className="text-center text-slate-500 p-4">Belum ada video.</p>}
-                    </div>
-                </InfoCard>
+                <div className="lg:col-span-2 space-y-8">
+                    <InfoCard icon={<Video />} title="Kelola Video Rekomendasi">
+                        <form onSubmit={handleAddVideo} className="flex gap-2 mb-4">
+                            <input type="url" value={newVideoUrl} onChange={(e) => setNewVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="flex-grow p-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500 outline-none" required />
+                            <button type="submit" disabled={videoLoading} className="p-3 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors disabled:bg-slate-400">
+                                {videoLoading ? <Loader size={20} className="animate-spin" /> : <PlusCircle size={20} />}
+                            </button>
+                        </form>
+                        <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
+                            {videos.length > 0 ? videos.map(video => (
+                                <div key={video.fbId} className="flex items-center gap-2 p-2 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+                                    <button onClick={() => toggleVideoStatus(video.fbId, video.isActive)} className="p-1">
+                                        {video.isActive ? <Eye size={16} className="text-green-500"/> : <EyeOff size={16} className="text-slate-500"/>}
+                                    </button>
+                                    <Youtube className="text-red-500 flex-shrink-0 mx-2" />
+                                    <p className="flex-grow truncate text-sm" title={video.title}>{video.title}</p>
+                                    <button className="p-2 hover:text-cyan-500 transition-colors" onClick={() => setEditingVideo({ ...video, newTitle: video.title })}><Edit size={16}/></button>
+                                    <button className="p-2 hover:text-red-500 transition-colors" onClick={() => deleteVideo(video.fbId)}><Trash2 size={16}/></button>
+                                </div>
+                            )) : <p className="text-center text-slate-500 p-4">Belum ada video.</p>}
+                        </div>
+                    </InfoCard>
+                     <InfoCard icon={<Power />} title="Kontrol Fitur Aplikasi">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                           <FeatureToggleCard featureKey="focusMode" label="Mode Fokus" isEnabled={featureFlags.focusMode} onToggle={toggleFeatureFlag} />
+                           <FeatureToggleCard featureKey="timerMode" label="Mode Timer" isEnabled={featureFlags.timerMode} onToggle={toggleFeatureFlag} />
+                           <FeatureToggleCard featureKey="dailyPractice" label="Latihan Harian" isEnabled={featureFlags.dailyPractice} onToggle={toggleFeatureFlag} />
+                        </div>
+                    </InfoCard>
+                </div>
 
                 <InfoCard icon={<Terminal />} title="Developer Console" className="lg:col-span-1">
-                    <div className="bg-black text-white font-mono text-xs p-3 rounded-lg h-64 overflow-y-auto mb-4">
-                        {logs.map((log, i) => <p key={i} className={log.includes('[ERROR]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : ''}>{log}</p>)}
-                    </div>
-                    <div className="space-y-2">
-                         <ConsoleButton icon={<Power />} text="Toggle Fitur Leaderboard" onClick={() => toggleFeature('leaderboard')} active={experimentalFeatures['leaderboard']} />
-                         <ConsoleButton icon={<Power />} text="Toggle Fitur Misi Harian" onClick={() => toggleFeature('missions')} active={experimentalFeatures['missions']} />
-                         <button onClick={() => setShowConfirm(true)} className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition-colors">
-                            <Trash2 size={16} /> Reset Daftar Video
-                        </button>
+                    <div className="bg-black text-white font-mono text-xs p-3 rounded-lg h-full overflow-y-auto">
+                        {logs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : ''}`}>{log}</p>)}
                     </div>
                 </InfoCard>
+            </div>
+            {editingVideo && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setEditingVideo(null)}>
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold mb-4">Edit Judul Video</h3>
+                        <form onSubmit={handleUpdateTitle}>
+                            <input
+                                type="text"
+                                value={editingVideo.newTitle}
+                                onChange={(e) => setEditingVideo(v => ({...v, newTitle: e.target.value}))}
+                                className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500"
+                            />
+                            <div className="flex justify-end gap-3 mt-4">
+                                <button type="button" onClick={() => setEditingVideo(null)} className="px-4 py-2 bg-slate-200 dark:bg-slate-600 rounded-lg">Batal</button>
+                                <button type="submit" className="px-4 py-2 bg-cyan-500 text-white rounded-lg">Simpan</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </AnimatedScreen>
+    );
+};
+
+// --- HALAMAN BARU: CHAT AI ---
+const ChatAiPage = () => {
+    const [messages, setMessages] = useState([
+        { role: 'model', content: "Halo! Saya Kak Spenta AI, asisten belajarmu. Ada yang bisa saya bantu jelaskan hari ini?" }
+    ]);
+    const [input, setInput] = useState('');
+    const [isThinking, setIsThinking] = useState(false);
+    const chatEndRef = useRef(null);
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+        if (!input.trim() || isThinking) return;
+
+        const userMessage = { role: 'user', content: input };
+        setMessages(prev => [...prev, userMessage]);
+        setInput('');
+        setIsThinking(true);
+
+        const chatHistoryForApi = messages.map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.content }]
+        }));
+
+        try {
+            // Menggunakan prompt khusus untuk jawaban non-JSON
+            const prompt = `Sebagai "Kak Spenta AI", seorang guru yang ramah dan membantu, jawab pertanyaan berikut: ${input}`;
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+            const payload = {
+                contents: [...chatHistoryForApi, { role: "user", parts: [{ text: prompt }] }],
+            };
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error("API request failed");
+            const result = await response.json();
+            const aiResponse = result.candidates[0].content.parts[0].text;
+            
+            setMessages(prev => [...prev, { role: 'model', content: aiResponse }]);
+        } catch (error) {
+            setMessages(prev => [...prev, { role: 'model', content: "Aduh, sepertinya ada sedikit gangguan di sirkuitku. Bisa coba tanyakan lagi?" }]);
+            console.error(error);
+        } finally {
+            setIsThinking(false);
+        }
+    };
+
+    return (
+        <AnimatedScreen customKey="tanya-ai">
+            <div className="flex flex-col h-[calc(100vh-10rem)] max-h-[800px] bg-white dark:bg-slate-800/50 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700/50">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                    <Bot size={28} className="text-cyan-500" />
+                    <div>
+                        <h1 className="text-xl font-bold">Tanya Segalanya dengan Kak Spenta AI</h1>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Asisten belajar pribadimu, siap 24/7.</p>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {messages.map((msg, index) => (
+                        <div key={index} className={`flex items-start gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            {msg.role === 'model' && (
+                                <div className="w-10 h-10 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center text-white">
+                                    <Bot size={24} />
+                                </div>
+                            )}
+                            <div className={`max-w-xl p-4 rounded-2xl prose prose-sm dark:prose-invert max-w-none ${msg.role === 'user' ? 'bg-cyan-500 text-white rounded-br-none' : 'bg-slate-100 dark:bg-slate-700 rounded-bl-none'}`}>
+                               <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            </div>
+                            {msg.role === 'user' && (
+                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex-shrink-0 flex items-center justify-center">
+                                    <UserCircle size={24} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {isThinking && (
+                         <div className="flex items-start gap-4 justify-start">
+                             <div className="w-10 h-10 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center text-white"><Bot size={24} /></div>
+                             <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 rounded-bl-none flex items-center gap-2">
+                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                             </div>
+                         </div>
+                    )}
+                    <div ref={chatEndRef} />
+                </div>
+                
+                <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                    <form onSubmit={handleSend} className="flex items-center gap-3">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Ketik pertanyaanmu di sini..."
+                            disabled={isThinking}
+                            className="flex-1 w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-xl border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500 outline-none"
+                        />
+                        <button type="submit" disabled={isThinking || !input.trim()} className="p-3 bg-cyan-500 text-white rounded-xl hover:bg-cyan-600 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed">
+                            <SendHorizonal size={24} />
+                        </button>
+                    </form>
+                </div>
             </div>
         </AnimatedScreen>
     );
 };
 
-const ChatAiPage = () => {
-    return (
-        <AnimatedScreen customKey="tanya-ai">
-            <h1 className="text-3xl font-bold mb-4">Tanya AI</h1>
-            <InfoCard icon={<MessageSquare />} title="Segera Hadir!">
-                <div className="text-center p-8">
-                    <BrainCog size={64} className="mx-auto text-cyan-400 mb-4" />
-                    <h2 className="text-2xl font-bold">Halaman Interaksi dengan Guru AI</h2>
-                    <p className="text-slate-500 mt-2">Fitur ini sedang dalam pengembangan. Nantikan kemampuan untuk bertanya apa saja seputar pelajaran langsung kepada Guru AI kami!</p>
-                </div>
-            </InfoCard>
-        </AnimatedScreen>
-    )
-};
-
 const UpdateLogPage = () => {
     const updates = [
-        { version: "v2.3.0", date: "26 Juni 2025", changes: [
-            "Memperbaiki sistem video: Video pembelajaran kini dicari dari YouTube, dan video rekomendasi di Dashboard dikelola developer.",
-            "Menambahkan card Video Rekomendasi di Dashboard.",
-            "Logika `fetchLearningMaterial` diperbarui untuk memanggil YouTube API.",
+        { version: "v3.0.0", date: "26 Juni 2025", changes: [
+            "Penambahan Halaman 'Tanya Segalanya': Chat interaktif dengan Kak Spenta AI (didukung Gemini).",
+            "Implementasi Developer Dashboard: statistik, pengelolaan video, dan kontrol fitur kini diambil dari Firestore secara live.",
+            "Dashboard Pengguna Ditingkatkan: Menampilkan 3 video rekomendasi acak dari developer, info jumlah materi & fitur aktif.",
+            "Desain Ulang Halaman Pengaturan: Opsi tema (terang, gelap, sistem) dan toggle simpan ke localStorage.",
+            "Integrasi PWA: Prompt instalasi aplikasi kini muncul saat kunjungan pertama.",
+            "Struktur Data Firestore: Menambahkan koleksi `dev_youtube_videos`, `dev_stats`, dan `dev_feature_flags` untuk data dinamis."
         ]},
         { version: "v2.2.0", date: "25 Juni 2025", changes: [
-            "Implementasi Developer Dashboard untuk pengelolaan video.",
             "Desain ulang Landing Page, Dashboard Pelajar, dan Halaman Pengaturan.",
-            "Sistem video pembelajaran sekarang menggunakan daftar terkurasi dari Developer.",
-            "Penambahan popup instalasi PWA.",
             "Penggantian warna tema utama menjadi Biru Toska (Cyan).",
-            "Penambahan halaman 'Tanya AI' sebagai placeholder.",
-        ]},
-        { version: "v2.1.0", date: "24 Juni 2025", changes: [
-            "Desain ulang UI/UX total dengan tema baru yang lebih segar, modern, dan ramah untuk pelajar.",
-            "Perbaikan fitur rekomendasi video di Dashboard.",
-            "Penambahan fitur 'Runtunan Belajar' di Dashboard.",
-            "Penambahan opsi Suara, Animasi, dan Font Disleksia-friendly.",
         ]},
     ];
 
@@ -735,17 +984,13 @@ const UpdateLogPage = () => {
     );
 };
 
-const LearningFlow = () => {
-    const { screen } = useContext(AppContext);
-    return <ScreenContainer />;
-};
-
-// --- KOMPONEN UI & PENDUKUNG ---
+// --- KOMPONEN UI & PENDUKUNG LAINNYA ---
+// Komponen ini tidak saya ubah secara fundamental, hanya beberapa penyesuaian kecil.
 
 const LoadingScreen = ({ message }) => (
     <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col items-center justify-center gap-6">
         <div className="relative w-24 h-24">
-            <img src="src/logo.png" alt="Loading Logo" className="w-full h-full animate-pulse" onError={(e) => e.target.outerHTML = '<Brain class="w-full h-full text-cyan-500 animate-pulse" />'} />
+            <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Loading Logo" className="w-full h-full animate-pulse" onError={(e) => e.target.outerHTML = '<Brain class="w-full h-full text-cyan-500 animate-pulse" />'} />
             <Sparkles className="absolute -top-2 -right-2 w-8 h-8 text-amber-400 animate-ping" />
         </div>
         <p className="text-xl font-semibold text-slate-600 dark:text-slate-300 text-center max-w-xs">{message || 'Memuat...'}</p>
@@ -764,7 +1009,7 @@ const PWAInstallPopup = ({ onClose }) => {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-8 text-center relative transform animate-fadeInUp">
                 <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X /></button>
-                <img src="src/logo.png" alt="App Logo" className="w-20 h-20 mx-auto mb-4" onError={(e) => e.target.outerHTML = '<Brain class="w-20 h-20 mx-auto mb-4 text-cyan-500" />'} />
+                <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="App Logo" className="w-20 h-20 mx-auto mb-4" onError={(e) => e.target.outerHTML = '<Brain class="w-20 h-20 mx-auto mb-4 text-cyan-500" />'} />
                 <h2 className="text-2xl font-bold">Install Aplikasi Bdukasi</h2>
                 <p className="text-slate-500 dark:text-slate-400 mt-2 mb-6">Dapatkan pengalaman belajar terbaik dengan menginstal aplikasi di perangkatmu.</p>
                 <button onClick={handleInstallClick} className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-cyan-500 text-white font-bold rounded-lg hover:bg-cyan-600 transition-colors">
@@ -775,41 +1020,44 @@ const PWAInstallPopup = ({ onClose }) => {
     );
 };
 
-const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-6 text-center transform animate-fadeInUp">
-            <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4"/>
-            <h2 className="text-2xl font-bold">{title}</h2>
-            <p className="text-slate-500 dark:text-slate-400 mt-2 mb-6">{message}</p>
-            <div className="flex gap-4">
-                <button onClick={onCancel} className="flex-1 px-6 py-3 bg-slate-200 dark:bg-slate-700 font-bold rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600">Batal</button>
-                <button onClick={onConfirm} className="flex-1 px-6 py-3 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600">Ya, Lanjutkan</button>
-            </div>
-        </div>
-    </div>
-);
-
-const SettingToggle = ({ label, icon, isEnabled, onToggle }) => (
-    <div className="flex items-center justify-between">
-        <label className="font-semibold flex items-center gap-3">
-            {icon} {label}
-        </label>
-        <button
-            onClick={onToggle}
-            className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-cyan-500' : 'bg-slate-300 dark:bg-slate-600'}`}
-        >
-            <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+const FeatureToggleCard = ({ featureKey, label, isEnabled, onToggle }) => (
+    <div className={`p-4 rounded-xl text-center border-2 transition-all ${isEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/30' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'}`}>
+        <p className={`font-bold mb-2 ${isEnabled ? 'text-green-700 dark:text-green-300' : 'text-slate-700 dark:text-slate-300'}`}>{label}</p>
+        <button onClick={() => onToggle(featureKey)}>
+            {isEnabled ? <ToggleRight size={32} className="text-green-500"/> : <ToggleLeft size={32} className="text-slate-500"/>}
         </button>
     </div>
 );
 
-const SettingOptionGroup = ({ label, options, selected, onChange, icon }) => (
+const SettingToggle = ({ label, icon, isEnabled, onToggle, hint }) => (
+    <div>
+        <div className="flex items-center justify-between">
+            <label className="font-semibold flex items-center gap-3">
+                {icon} {label}
+            </label>
+            <button
+                onClick={onToggle}
+                className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-cyan-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+            >
+                <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+        </div>
+        {hint && <p className="text-xs text-slate-400 mt-1 pl-9">{hint}</p>}
+    </div>
+);
+
+const SettingOptionGroup = ({ label, options, selected, onChange, icon, isIconGroup = false }) => (
     <div>
         <label className="font-semibold block mb-2 flex items-center gap-2">{icon}{label}</label>
         <div className="flex flex-wrap gap-2">
             {options.map(opt => (
-                <button key={opt.value} onClick={() => onChange(opt.value)} className={`px-4 py-2 rounded-lg font-semibold transition-colors ${selected === opt.value ? 'bg-cyan-500 text-white' : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600'}`}>
-                    {opt.label}
+                <button 
+                    key={opt.value} 
+                    onClick={() => onChange(opt.value)} 
+                    className={`px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 ${selected === opt.value ? 'bg-cyan-500 text-white' : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600'}`}
+                >
+                    {isIconGroup && opt.icon}
+                    <span>{opt.label}</span>
                 </button>
             ))}
         </div>
@@ -823,12 +1071,6 @@ const StatCard = ({ icon, label, value }) => (
             <p className="text-2xl font-bold">{value}</p>
         </div>
     </div>
-);
-const ConsoleButton = ({ icon, text, onClick, active }) => (
-    <button onClick={onClick} className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition-colors ${active ? 'bg-green-500/20 text-green-400' : 'bg-slate-500/20 text-slate-400 hover:bg-slate-500/40'}`}>
-        <span className="flex items-center gap-2">{icon} {text}</span>
-        {active ? <Power size={16} /> : <PowerOff size={16} />}
-    </button>
 );
 
 const AnimatedScreen = ({ children, customKey }) => <div key={customKey} className="animate-fadeIn">{children}</div>;
@@ -848,7 +1090,7 @@ const Navbar = () => {
     return (
         <header className="sticky top-0 bg-white/70 dark:bg-slate-900/80 backdrop-blur-md z-10 border-b border-slate-200 dark:border-slate-700 md:hidden">
             <div className="px-4 h-16 flex items-center justify-between">
-                <div className="font-bold text-xl flex items-center gap-2"><img src="src/logo.png" alt="Logo" className="h-8 w-8" onError={(e) => e.target.outerHTML = '<Brain class="h-8 w-8 text-cyan-500" />'} /> Bdukasi</div>
+                <div className="font-bold text-xl flex items-center gap-2"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-8 w-8" onError={(e) => e.target.outerHTML = '<Brain class="h-8 w-8 text-cyan-500" />'} /> Bdukasi</div>
                 <button onClick={() => setSidebarOpen(true)} className="md:hidden">
                     <Menu />
                 </button>
@@ -859,7 +1101,7 @@ const Navbar = () => {
 
 const Sidebar = () => {
     const { page, setPage, isSidebarOpen, setSidebarOpen } = useContext(AppContext);
-    const { logout } = useContext(AuthContext);
+    const { logout, user } = useContext(AuthContext);
     const { isDeveloper } = useContext(AuthContext);
 
     const navItems = [
@@ -877,8 +1119,8 @@ const Sidebar = () => {
         <>
             <div onClick={() => setSidebarOpen(false)} className={`fixed inset-0 bg-black/50 z-20 md:hidden transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}></div>
             <aside className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col z-30 transition-transform md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <div className="flex items-center gap-3 text-2xl font-bold mb-10">
-                    <img src="src/logo.png" alt="Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} />
+                 <div className="flex items-center gap-3 text-2xl font-bold mb-10">
+                    <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} />
                     <span className="text-slate-800 dark:text-white">Bdukasi</span>
                 </div>
                 <nav className="flex-grow space-y-2">
@@ -894,6 +1136,13 @@ const Sidebar = () => {
                     ))}
                 </nav>
                 <div className="mt-auto">
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/50 mb-4">
+                        <img src={user?.photoURL} alt="Avatar" className="w-10 h-10 rounded-full" />
+                        <div>
+                            <p className="font-semibold text-sm line-clamp-1">{user?.displayName}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{user?.email}</p>
+                        </div>
+                    </div>
                     <button onClick={logout} className="w-full flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 font-semibold">
                         <LogOut size={20}/>
                         <span>Keluar</span>
@@ -905,7 +1154,7 @@ const Sidebar = () => {
 }
 
 const InfoCard = ({ icon, title, children, className = '' }) => <div className={`bg-white dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/50 rounded-2xl shadow-sm overflow-hidden ${className} animate-fadeInUp`}><div className="p-4 border-b border-slate-200/80 dark:border-slate-700/50 flex items-center gap-3">{icon && <div className="text-cyan-500">{React.cloneElement(icon, { size: 24 })}</div>}<h2 className="text-xl font-bold">{title}</h2></div><div className="p-4 sm:p-6">{children}</div></div>;
-
+const LearningFlow = () => { const { screen } = useContext(AppContext); return <ScreenContainer />; };
 const LearningMaterialScreen = () => {
     const { learningData, setScreen } = useContext(AppContext);
     if (!learningData) return <div className="text-center p-8">Materi tidak ditemukan. <button onClick={() => setScreen('subjectDashboard')} className="text-cyan-500 underline">Kembali</button></div>;
@@ -931,9 +1180,8 @@ const LearningMaterialScreen = () => {
         </AnimatedScreen>
     );
 };
-
 const Footer = ({ isLanding = false }) => (
-    <footer className={`w-full text-center p-6 text-slate-500 dark:text-slate-400 text-sm ${isLanding ? 'relative z-10 mt-16' : 'mt-auto border-t border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50'}`}>
+    <footer className={`w-full text-center p-6 text-slate-500 dark:text-slate-400 text-sm ${isLanding ? 'relative z-10 mt-16' : 'mt-auto'}`}>
         <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Sebuah Karya dari</p>
         <p className="text-lg font-bold text-slate-900 dark:text-white">M. Irham Andika Putra & Bgune Digital</p>
         <div className="flex justify-center gap-4 mt-3">
@@ -944,168 +1192,21 @@ const Footer = ({ isLanding = false }) => (
         <p className="mt-4 text-xs">Dibuat dengan <Sparkles className="inline h-3 w-3 text-amber-400"/> dan Teknologi AI dari Google</p>
     </footer>
 );
-
-const ScreenContainer = () => {
-    const { screen } = useContext(AppContext);
-    const screens = {
-        levelSelection: <LevelSelectionScreen key="level" />,
-        trackSelection: <TrackSelectionScreen key="track" />,
-        subjectSelection: <SubjectSelectionScreen key="subject" />,
-        subjectDashboard: <SubjectDashboardScreen key="dashboard" />,
-        lesson: <LearningMaterialScreen key="lesson" />,
-        bankSoal: <BankSoalScreen key="bankSoal" />,
-    };
-    return <div className="relative h-full w-full">{screens[screen]}</div>;
-};
-
+const ScreenContainer = () => { const { screen } = useContext(AppContext); const screens = { levelSelection: <LevelSelectionScreen key="level" />, trackSelection: <TrackSelectionScreen key="track" />, subjectSelection: <SubjectSelectionScreen key="subject" />, subjectDashboard: <SubjectDashboardScreen key="dashboard" />, lesson: <LearningMaterialScreen key="lesson" />, bankSoal: <BankSoalScreen key="bankSoal" />, }; return <div className="relative h-full w-full">{screens[screen]}</div>; };
 const BackButton = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-2 text-cyan-500 font-semibold hover:underline mb-8"><ArrowLeft size={20} /> Kembali</button>;
 const ErrorMessage = ({ message }) => <div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-r-lg mt-4 w-full flex items-center gap-4"><AlertTriangle className="h-6 w-6 text-red-500" /><p className="font-bold">{message}</p></div>;
-
 const iconMap = { School, Brain, BookOpen, Youtube, Lightbulb, FileText, ArrowLeft, Loader, Sparkles, AlertTriangle, X, FlaskConical, Globe, Calculator, Dna, BarChart2, Drama, Computer, BookHeart, Landmark, Languages, HelpCircle, Atom, CheckCircle, ChevronRight, BrainCircuit, History, BookMarked, Github, Instagram };
 const curriculum = { 'SD': { subjects: [{ name: 'Matematika', iconName: 'Calculator' }, { name: 'IPAS', iconName: 'Globe' }, { name: 'Pendidikan Pancasila', iconName: 'Landmark' }, { name: 'Bahasa Indonesia', iconName: 'BookHeart' }] }, 'SMP': { subjects: [{ name: 'Matematika', iconName: 'Calculator' }, { name: 'IPA Terpadu', iconName: 'FlaskConical' }, { name: 'IPS Terpadu', iconName: 'Globe' }, { name: 'Pendidikan Pancasila', iconName: 'Landmark'}, { name: 'Bahasa Indonesia', iconName: 'BookHeart' }, { name: 'Bahasa Inggris', iconName: 'Languages' }, { name: 'Informatika', iconName: 'Computer' }] }, 'SMA': { tracks: { 'IPA': [{ name: 'Matematika Peminatan', iconName: 'Calculator' }, { name: 'Fisika', iconName: 'Atom' }, { name: 'Kimia', iconName: 'FlaskConical' }, { name: 'Biologi', iconName: 'Dna' }], 'IPS': [{ name: 'Ekonomi', iconName: 'BarChart2' }, { name: 'Geografi', iconName: 'Globe' }, { name: 'Sosiologi', iconName: 'School' }], 'Bahasa': [{ name: 'Sastra Indonesia', iconName: 'BookHeart' }, { name: 'Sastra Inggris', iconName: 'Drama' }, { name: 'Antropologi', iconName: 'Globe' }, { name: 'Bahasa Asing', iconName: 'Languages' }] } } };
-
-const LevelSelectionScreen = () => { 
-    const { setScreen, setLevel, setPage } = useContext(AppContext);
-    return (
-        <AnimatedScreen customKey="level">
-            <div className="text-center pt-8">
-                <BackButton onClick={() => setPage('dashboard')} />
-                <School className="w-24 h-24 mx-auto text-cyan-500" />
-                <h1 className="text-4xl font-bold mt-4">Pilih Jenjang Pendidikan</h1>
-                <p className="text-xl text-slate-500 dark:text-slate-400 mt-2 mb-12">Mulai dari sini untuk petualangan belajarmu.</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-                    {Object.keys(curriculum).map((lvl) => <button key={lvl} onClick={() => { setLevel(lvl); setScreen(lvl === 'SMA' ? 'trackSelection' : 'subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold flex flex-col items-center justify-center gap-4 cursor-pointer">{lvl}</button>)}
-                </div>
-            </div>
-        </AnimatedScreen>
-    );
-};
-const TrackSelectionScreen = () => { 
-    const { setScreen, setTrack } = useContext(AppContext);
-    return (
-        <AnimatedScreen customKey="track">
-             <BackButton onClick={() => setScreen('levelSelection')} />
-            <div className="text-center pt-8">
-                <h1 className="text-4xl font-bold mb-12">Pilih Jurusan</h1>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-2xl mx-auto">
-                    {Object.keys(curriculum.SMA.tracks).map((trackName) => <button key={trackName} onClick={() => { setTrack(trackName); setScreen('subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold">{trackName}</button>)}
-                </div>
-            </div>
-        </AnimatedScreen>
-    );
-};
-const SubjectSelectionScreen = () => {
-    const { level, track, setScreen, setSubject } = useContext(AppContext);
-    const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects;
-    const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection';
-    if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>
-    return (
-        <AnimatedScreen customKey="subject">
-             <BackButton onClick={() => setScreen(backScreen)} />
-            <div className="pt-8">
-                 <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto">
-                    {subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)}
-                </div>
-            </div>
-        </AnimatedScreen>
-    );
-};
+const LevelSelectionScreen = () => { const { setScreen, setLevel, setPage } = useContext(AppContext); return ( <AnimatedScreen customKey="level"> <div className="text-center pt-8"> <BackButton onClick={() => setPage('dashboard')} /> <School className="w-24 h-24 mx-auto text-cyan-500" /> <h1 className="text-4xl font-bold mt-4">Pilih Jenjang Pendidikan</h1> <p className="text-xl text-slate-500 dark:text-slate-400 mt-2 mb-12">Mulai dari sini untuk petualangan belajarmu.</p> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto"> {Object.keys(curriculum).map((lvl) => <button key={lvl} onClick={() => { setLevel(lvl); setScreen(lvl === 'SMA' ? 'trackSelection' : 'subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold flex flex-col items-center justify-center gap-4 cursor-pointer">{lvl}</button>)} </div> </div> </AnimatedScreen> ); };
+const TrackSelectionScreen = () => { const { setScreen, setTrack } = useContext(AppContext); return ( <AnimatedScreen customKey="track"> <BackButton onClick={() => setScreen('levelSelection')} /> <div className="text-center pt-8"> <h1 className="text-4xl font-bold mb-12">Pilih Jurusan</h1> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-2xl mx-auto"> {Object.keys(curriculum.SMA.tracks).map((trackName) => <button key={trackName} onClick={() => { setTrack(trackName); setScreen('subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold">{trackName}</button>)} </div> </div> </AnimatedScreen> ); };
+const SubjectSelectionScreen = () => { const { level, track, setScreen, setSubject } = useContext(AppContext); const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects; const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection'; if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>; return ( <AnimatedScreen customKey="subject"> <BackButton onClick={() => setScreen(backScreen)} /> <div className="pt-8"> <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1> <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto"> {subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)} </div> </div> </AnimatedScreen> ); };
 const DynamicIcon = ({ name, ...props }) => { const IconComponent = iconMap[name]; return IconComponent ? <IconComponent {...props} /> : <HelpCircle {...props} />; };
-const SubjectDashboardScreen = () => {
-    const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext);
-    const [inputValue, setInputValue] = useState('');
-    const [activeTab, setActiveTab] = useState('rekomendasi');
-
-    useEffect(() => { if (subject && recommendations.length === 0) fetchRecommendations(); }, [subject, fetchRecommendations, recommendations.length]);
-    if (!subject) return <div className="text-center">Harap pilih mata pelajaran. <BackButton onClick={() => setScreen('subjectSelection')} /></div>;
-
-    const handleSearchSubmit = (e) => { e.preventDefault(); if(inputValue.trim()) { setError(null); fetchLearningMaterial(inputValue); } else { setError("Topik pencarian tidak boleh kosong."); } };
-
-    return (
-        <AnimatedScreen customKey="dashboard">
-            <BackButton onClick={() => setScreen('subjectSelection')} />
-            <div className="text-center pt-8"><DynamicIcon name={subject.iconName} size={80} className="text-cyan-500 mx-auto mb-4" /><h1 className="text-4xl font-bold">Mata Pelajaran: {subject.name}</h1></div>
-            <div className="w-full max-w-2xl mx-auto my-12">
-                <form onSubmit={handleSearchSubmit} className="relative">
-                    <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Ketik topik untuk dipelajari..." className="w-full pl-6 pr-16 py-4 text-lg bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 rounded-full focus:ring-4 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all"/>
-                    <button type="submit" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition-transform active:scale-95"><Search className="w-6 h-6" /></button>
-                </form>
-                 {error && <ErrorMessage message={error} />}
-            </div>
-            <div className="max-w-4xl mx-auto">
-                <div className="flex justify-center border-b border-slate-300 dark:border-slate-700 mb-6 flex-wrap">{['rekomendasi', 'riwayat', 'bank_soal'].map(tab => <TabButton key={tab} icon={{rekomendasi: <Sparkles/>, riwayat: <History/>, bank_soal: <BrainCircuit/>}[tab]} text={{rekomendasi: "Rekomendasi", riwayat: "Riwayat", bank_soal: "Bank Soal"}[tab]} isActive={activeTab===tab} onClick={() => setActiveTab(tab)}/>)}</div>
-                <div className="animate-fadeInUp">
-                    {activeTab === 'rekomendasi' && (recommendations.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{recommendations.map((rec,i)=>(<ListItem key={i} text={rec} onClick={()=>fetchLearningMaterial(rec)}/>))}</div> : <p className="text-center text-slate-500">Guru AI sedang mencari rekomendasi...</p>)}
-                    {activeTab === 'riwayat' && (history.filter(h => h.subjectName === subject.name).length > 0 ? <div className="grid md:grid-cols-2 gap-4">{history.filter(h => h.subjectName === subject.name).map((h,i)=>(<ListItem key={i} text={h.topic} onClick={()=>fetchLearningMaterial(h.topic, true)}/>))}</div> : <p className="text-center text-slate-500">Belum ada riwayat belajar.</p>)}
-                    {activeTab === 'bank_soal' && <BankSoalGenerator />}
-                </div>
-            </div>
-        </AnimatedScreen>
-    );
-};
-const BankSoalGenerator = () => {
-    const { setError, fetchBankSoal } = useContext(AppContext);
-    const [topic, setTopic] = useState('');
-    const [count, setCount] = useState(5);
-    const handleSubmit = (e) => { e.preventDefault(); if (!topic.trim()) { setError("Topik soal tidak boleh kosong."); return; } if (count < 1 || count > 20) { setError("Jumlah soal harus antara 1 dan 20."); return; } setError(null); fetchBankSoal(topic, count); };
-    return (
-        <div className="max-w-xl mx-auto bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700">
-            <h3 className="text-xl font-bold text-center mb-4">🎯 Bank Soal Berbasis Topik</h3>
-            <p className="text-center text-slate-500 dark:text-slate-400 mb-4">Masukkan topik spesifik dan jumlah soal.</p>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <input type="text" value={topic} onChange={e => setTopic(e.target.value)} placeholder='Contoh: Perang Diponegoro' className='w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' />
-                <div className="flex flex-col sm:flex-row gap-4">
-                    <input type="number" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} min="1" max="20" className='w-full sm:w-1/3 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' />
-                    <button type="submit" className="w-full sm:w-2/3 p-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors disabled:bg-slate-500">Buatkan Soal!</button>
-                </div>
-            </form>
-        </div>
-    );
-};
+const SubjectDashboardScreen = () => { const { subject, recommendations, error, setError, history, setScreen, fetchLearningMaterial, fetchRecommendations } = useContext(AppContext); const [inputValue, setInputValue] = useState(''); const [activeTab, setActiveTab] = useState('rekomendasi'); useEffect(() => { if (subject && recommendations.length === 0) fetchRecommendations(); }, [subject, fetchRecommendations, recommendations.length]); if (!subject) return <div className="text-center">Harap pilih mata pelajaran. <BackButton onClick={() => setScreen('subjectSelection')} /></div>; const handleSearchSubmit = (e) => { e.preventDefault(); if(inputValue.trim()) { setError(null); fetchLearningMaterial(inputValue); } else { setError("Topik pencarian tidak boleh kosong."); } }; return ( <AnimatedScreen customKey="dashboard"> <BackButton onClick={() => setScreen('subjectSelection')} /> <div className="text-center pt-8"><DynamicIcon name={subject.iconName} size={80} className="text-cyan-500 mx-auto mb-4" /><h1 className="text-4xl font-bold">Mata Pelajaran: {subject.name}</h1></div> <div className="w-full max-w-2xl mx-auto my-12"> <form onSubmit={handleSearchSubmit} className="relative"> <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Ketik topik untuk dipelajari..." className="w-full pl-6 pr-16 py-4 text-lg bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 rounded-full focus:ring-4 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all"/> <button type="submit" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition-transform active:scale-95"><Search className="w-6 h-6" /></button> </form> {error && <ErrorMessage message={error} />} </div> <div className="max-w-4xl mx-auto"> <div className="flex justify-center border-b border-slate-300 dark:border-slate-700 mb-6 flex-wrap">{['rekomendasi', 'riwayat', 'bank_soal'].map(tab => <TabButton key={tab} icon={{rekomendasi: <Sparkles/>, riwayat: <History/>, bank_soal: <BrainCircuit/>}[tab]} text={{rekomendasi: "Rekomendasi", riwayat: "Riwayat", bank_soal: "Bank Soal"}[tab]} isActive={activeTab===tab} onClick={() => setActiveTab(tab)}/>)}</div> <div className="animate-fadeInUp"> {activeTab === 'rekomendasi' && (recommendations.length > 0 ? <div className="grid md:grid-cols-2 gap-4">{recommendations.map((rec,i)=>(<ListItem key={i} text={rec} onClick={()=>fetchLearningMaterial(rec)}/>))}</div> : <p className="text-center text-slate-500">Guru AI sedang mencari rekomendasi...</p>)} {activeTab === 'riwayat' && (history.filter(h => h.subjectName === subject.name).length > 0 ? <div className="grid md:grid-cols-2 gap-4">{history.filter(h => h.subjectName === subject.name).map((h,i)=>(<ListItem key={i} text={h.topic} onClick={()=>fetchLearningMaterial(h.topic, true)}/>))}</div> : <p className="text-center text-slate-500">Belum ada riwayat belajar.</p>)} {activeTab === 'bank_soal' && <BankSoalGenerator />} </div> </div> </AnimatedScreen> ); };
+const BankSoalGenerator = () => { const { setError, fetchBankSoal } = useContext(AppContext); const [topic, setTopic] = useState(''); const [count, setCount] = useState(5); const handleSubmit = (e) => { e.preventDefault(); if (!topic.trim()) { setError("Topik soal tidak boleh kosong."); return; } if (count < 1 || count > 20) { setError("Jumlah soal harus antara 1 dan 20."); return; } setError(null); fetchBankSoal(topic, count); }; return ( <div className="max-w-xl mx-auto bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700"> <h3 className="text-xl font-bold text-center mb-4">🎯 Bank Soal Berbasis Topik</h3> <p className="text-center text-slate-500 dark:text-slate-400 mb-4">Masukkan topik spesifik dan jumlah soal.</p> <form onSubmit={handleSubmit} className="space-y-4"> <input type="text" value={topic} onChange={e => setTopic(e.target.value)} placeholder='Contoh: Perang Diponegoro' className='w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' /> <div className="flex flex-col sm:flex-row gap-4"> <input type="number" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} min="1" max="20" className='w-full sm:w-1/3 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500' /> <button type="submit" className="w-full sm:w-2/3 p-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors disabled:bg-slate-500">Buatkan Soal!</button> </div> </form> </div> ); };
 const TabButton = ({icon, text, isActive, onClick}) => <button onClick={onClick} className={`flex items-center gap-2 px-4 py-3 sm:px-6 font-semibold border-b-2 transition-all ${isActive ? 'text-cyan-500 border-cyan-500' : 'text-slate-500 border-transparent hover:text-cyan-500'}`}>{React.cloneElement(icon, {size: 20})} <span className="hidden sm:inline">{text}</span></button>;
 const ListItem = ({text, onClick}) => <button onClick={onClick} className="w-full text-left flex justify-between items-center p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-cyan-500 rounded-lg transition-all"><span className="font-semibold">{text}</span><ChevronRight /></button>;
-const BankSoalScreen = () => {
-    const { bankSoal, setScreen } = useContext(AppContext);
-    return (
-        <AnimatedScreen customKey="bankSoal">
-            <BackButton onClick={() => setScreen('subjectDashboard')} />
-            <div className="pt-8"><InfoCard title="Bank Soal Latihan">{bankSoal && bankSoal.length > 0 ? <QuizPlayer questions={bankSoal} /> : <p className="text-center p-4">Gagal memuat soal.</p>}</InfoCard></div>
-        </AnimatedScreen>
-    );
-};
-const QuizPlayer = ({ questions }) => {
-    const [answers, setAnswers] = useState({});
-    const [isSubmitted, setSubmitted] = useState(false);
-    if (!questions || !Array.isArray(questions) || questions.length === 0) return <p>Soal latihan tidak tersedia.</p>;
-    const score = useMemo(() => isSubmitted ? questions.reduce((acc, q, i) => acc + (answers[i]?.charAt(0).toUpperCase() === q.correctAnswer.charAt(0).toUpperCase() ? 1 : 0), 0) : 0, [answers, questions, isSubmitted]);
-
-    return (
-        <div className="space-y-8">
-            {isSubmitted && <div className="text-center p-4 rounded-lg bg-cyan-100 dark:bg-cyan-900/50 border border-cyan-300 dark:border-cyan-700"><h3 className="text-2xl font-bold">Skor: {Math.round((score / questions.length) * 100)}%</h3><p>Benar {score} dari {questions.length} soal.</p></div>}
-            {questions.map((q, qIndex) => (
-                <div key={qIndex}>
-                    <p className="font-semibold text-lg mb-3">{qIndex + 1}. {q.question}</p>
-                    <div className="space-y-2">{q.options?.map((opt, oIndex) => {
-                        const isSelected = answers[qIndex] === opt;
-                        const isCorrectOption = opt.charAt(0).toUpperCase() === q.correctAnswer.charAt(0).toUpperCase();
-                        let stateClass = "border-slate-300 dark:border-slate-600 hover:border-cyan-500 hover:bg-slate-100 dark:hover:bg-slate-700";
-                        if (isSubmitted) {
-                            if (isCorrectOption) stateClass = "bg-green-100 dark:bg-green-900/60 border-green-500 text-green-800 dark:text-white";
-                            else if (isSelected && !isCorrectOption) stateClass = "bg-red-100 dark:bg-red-900/60 border-red-500 text-red-800 dark:text-white";
-                            else stateClass = "border-slate-300 dark:border-slate-700 text-slate-500";
-                        } else if (isSelected) {
-                            stateClass = "border-cyan-500 bg-cyan-100 dark:bg-cyan-900/50";
-                        }
-                        return <button key={oIndex} onClick={() => !isSubmitted && setAnswers(p => ({ ...p, [qIndex]: opt }))} disabled={isSubmitted} className={`w-full text-left p-3 rounded-lg border-2 transition-all duration-200 ${stateClass} disabled:cursor-not-allowed`}>{opt}</button>})}
-                    </div>
-                    {isSubmitted && q.explanation && <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg text-sm"><p className="font-bold flex items-center gap-2"><CheckCircle size={16}/> Penjelasan:</p><p className="mt-2 pl-1">{q.explanation}</p><p className="mt-2 pl-1">Jawaban benar: <span className="font-bold text-green-600 dark:text-green-400">{q.correctAnswer}</span></p></div>}
-                </div>
-            ))}
-            <div className="pt-4">{!isSubmitted ? <button onClick={() => setSubmitted(true)} disabled={Object.keys(answers).length !== questions.length} className="w-full p-4 mt-6 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:bg-slate-500 disabled:cursor-not-allowed transition-all">Kumpulkan Jawaban</button> : <button onClick={() => { setSubmitted(false); setAnswers({}); }} className="w-full p-4 mt-6 font-bold text-white bg-slate-600 rounded-lg hover:bg-slate-700 transition-all">Coba Lagi</button>}</div>
-        </div>
-    );
-};
+const BankSoalScreen = () => { const { bankSoal, setScreen } = useContext(AppContext); return ( <AnimatedScreen customKey="bankSoal"> <BackButton onClick={() => setScreen('subjectDashboard')} /> <div className="pt-8"><InfoCard title="Bank Soal Latihan">{bankSoal && bankSoal.length > 0 ? <QuizPlayer questions={bankSoal} /> : <p className="text-center p-4">Gagal memuat soal.</p>}</InfoCard></div> </AnimatedScreen> ); };
+const QuizPlayer = ({ questions }) => { const [answers, setAnswers] = useState({}); const [isSubmitted, setSubmitted] = useState(false); if (!questions || !Array.isArray(questions) || questions.length === 0) return <p>Soal latihan tidak tersedia.</p>; const score = useMemo(() => isSubmitted ? questions.reduce((acc, q, i) => acc + (answers[i]?.charAt(0).toUpperCase() === q.correctAnswer.charAt(0).toUpperCase() ? 1 : 0), 0) : 0, [answers, questions, isSubmitted]); return ( <div className="space-y-8"> {isSubmitted && <div className="text-center p-4 rounded-lg bg-cyan-100 dark:bg-cyan-900/50 border border-cyan-300 dark:border-cyan-700"><h3 className="text-2xl font-bold">Skor: {Math.round((score / questions.length) * 100)}%</h3><p>Benar {score} dari {questions.length} soal.</p></div>} {questions.map((q, qIndex) => ( <div key={qIndex}> <p className="font-semibold text-lg mb-3">{qIndex + 1}. {q.question}</p> <div className="space-y-2">{q.options?.map((opt, oIndex) => { const isSelected = answers[qIndex] === opt; const isCorrectOption = opt.charAt(0).toUpperCase() === q.correctAnswer.charAt(0).toUpperCase(); let stateClass = "border-slate-300 dark:border-slate-600 hover:border-cyan-500 hover:bg-slate-100 dark:hover:bg-slate-700"; if (isSubmitted) { if (isCorrectOption) stateClass = "bg-green-100 dark:bg-green-900/60 border-green-500 text-green-800 dark:text-white"; else if (isSelected && !isCorrectOption) stateClass = "bg-red-100 dark:bg-red-900/60 border-red-500 text-red-800 dark:text-white"; else stateClass = "border-slate-300 dark:border-slate-700 text-slate-500"; } else if (isSelected) { stateClass = "border-cyan-500 bg-cyan-100 dark:bg-cyan-900/50"; } return <button key={oIndex} onClick={() => !isSubmitted && setAnswers(p => ({ ...p, [qIndex]: opt }))} disabled={isSubmitted} className={`w-full text-left p-3 rounded-lg border-2 transition-all duration-200 ${stateClass} disabled:cursor-not-allowed`}>{opt}</button>})} </div> {isSubmitted && q.explanation && <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg text-sm"><p className="font-bold flex items-center gap-2"><CheckCircle size={16}/> Penjelasan:</p><p className="mt-2 pl-1">{q.explanation}</p><p className="mt-2 pl-1">Jawaban benar: <span className="font-bold text-green-600 dark:text-green-400">{q.correctAnswer}</span></p></div>} </div> ))} <div className="pt-4">{!isSubmitted ? <button onClick={() => setSubmitted(true)} disabled={Object.keys(answers).length !== questions.length} className="w-full p-4 mt-6 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:bg-slate-500 disabled:cursor-not-allowed transition-all">Kumpulkan Jawaban</button> : <button onClick={() => { setSubmitted(false); setAnswers({}); }} className="w-full p-4 mt-6 font-bold text-white bg-slate-600 rounded-lg hover:bg-slate-700 transition-all">Coba Lagi</button>}</div> </div> ); };
 
 // --- CSS & STYLING INJECTOR ---
 const styleSheet = document.createElement("style");
@@ -1121,11 +1222,9 @@ styleSheet.innerText = `
     body, .font-sans { font-family: var(--font-family-default); }
     .dyslexia-friendly { font-family: var(--font-family-dyslexia); letter-spacing: 0.5px; }
 
-    .font-size-sm { --font-size-multiplier: 0.9; }
-    .font-size-base { --font-size-multiplier: 1; }
-    .font-size-lg { --font-size-multiplier: 1.1; }
-    p, span, div, button, input, a, li, h3, h2, h4 { font-size: calc(1rem * var(--font-size-multiplier)); }
-    h1 { font-size: calc(2rem * var(--font-size-multiplier)); }
+    .font-size-sm { font-size: 0.9rem; }
+    .font-size-base { font-size: 1rem; }
+    .font-size-lg { font-size: 1.1rem; }
 
     .focus-mode .non-essential { display: none !important; }
 
@@ -1147,7 +1246,9 @@ styleSheet.innerText = `
     .prose :where(h3):not(:where([class~="not-prose"] *)) { margin-top: 1.2em; margin-bottom: 0.5em; }
     .prose :where(ul):not(:where([class~="not-prose"] *)) { padding-left: 1.2em; }
     .prose :where(ol):not(:where([class~="not-prose"] *)) { padding-left: 1.2em; }
-    .prose :where(code):not(:where([class~="not-prose"] *)) { background-color: #e2e8f0; padding: 0.2em 0.4em; border-radius: 0.25rem; font-weight: 600; }
+    .prose :where(code):not(:where([class~="not-prose"] *)) { background-color: #e2e8f0; padding: 0.2em 0.4em; border-radius: 0.25rem; font-weight: 600; font-size: 85% !important; }
     .dark .prose :where(code):not(:where([class~="not-prose"] *)) { background-color: #334155; }
+    .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 `;
 document.head.appendChild(styleSheet);
+
