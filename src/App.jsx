@@ -20,8 +20,9 @@ import ReactMarkdown from 'react-markdown';
 
 // --- KONFIGURASI PENTING & API KEYS ---
 // CATATAN: Ganti dengan kunci Anda sendiri di environment produksi.
-const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik";
-const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
+const GEMINI_API_KEY = "MASUKKAN_API_KEY_GEMINI_ANDA";
+const YOUTUBE_API_KEY = "MASUKKAN_API_KEY_YOUTUBE_ANDA";
+
 const firebaseConfig = {
     apiKey: "MASUKKAN_API_KEY_FIREBASE_ANDA",
     authDomain: "bgune---community.firebaseapp.com",
@@ -195,7 +196,8 @@ const SettingsProvider = ({ children }) => {
     const [dataSaverMode, setDataSaverMode] = useLocalStorage('bdukasi-data-saver-v3', false);
     const [dyslexiaFont, setDyslexiaFont] = useLocalStorage('bdukasi-dyslexia-v3', false);
 
-    const { featureFlags } = useContext(DevContext) || {};
+    const devContext = useContext(DevContext);
+    const featureFlags = devContext ? devContext.featureFlags : {};
 
     const activeTheme = useMemo(() => {
         if (theme === 'system') {
@@ -234,7 +236,9 @@ const SettingsProvider = ({ children }) => {
         root.classList.add(`font-size-${fontSize}`);
 
         root.classList.toggle('dyslexia-friendly', dyslexiaFont);
-        root.classList.toggle('focus-mode', featureFlags?.focusMode);
+        if (featureFlags) {
+            root.classList.toggle('focus-mode', featureFlags.focusMode);
+        }
     }, [fontSize, dyslexiaFont, featureFlags]);
 
     const value = { theme, setTheme, activeTheme, fontSize, setFontSize, language, setLanguage, dataSaverMode, setDataSaverMode, dyslexiaFont, setDyslexiaFont };
@@ -264,14 +268,12 @@ const DevProvider = ({ children }) => {
         addLog("Initializing Developer Context...", "SYSTEM");
 
         const unsubscribers = [
-            // FIX 1: Sistem rekomendasi video sudah benar, data diambil dari DB.
             onSnapshot(collection(db, "dev_youtube_videos"), (snapshot) => {
                 const fetchedVideos = snapshot.docs.map(doc => ({ fbId: doc.id, ...doc.data() }));
                 setVideos(fetchedVideos);
                 addLog(`Fetched ${fetchedVideos.length} recommendation videos.`, "DB");
             }, error => addLog(`Video fetch failed: ${error.message}`, "ERROR")),
 
-            // FIX 4: Data live untuk dashboard developer.
             onSnapshot(doc(db, "dev_stats", "main"), (doc) => {
                 if (doc.exists()) {
                     setStats(s => ({ ...s, ...doc.data() }));
@@ -311,7 +313,6 @@ const DevProvider = ({ children }) => {
             if (!videoId) throw new Error("URL YouTube tidak valid.");
 
             addLog(`Fetching title for video ID: ${videoId}`, "API");
-            // FIX 4: Gunakan API YouTube untuk mendapat judul video saat diupload
             const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet`);
             if (!response.ok) throw new Error("Gagal mengambil data dari YouTube API.");
             const data = await response.json();
@@ -364,6 +365,10 @@ const DevProvider = ({ children }) => {
 
 const AppProvider = ({ children }) => {
     const { user } = useContext(AuthContext);
+    // FIX: Moved useContext call to the top of the component to fix initialization error.
+    const settings = useContext(SettingsContext);
+    const dataSaverMode = settings ? settings.dataSaverMode : false;
+    
     const [page, setPage] = useState('dashboard');
     const [screen, setScreen] = useState('levelSelection');
     const [level, setLevel] = useState('');
@@ -378,7 +383,6 @@ const AppProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [toast, setToast] = useState({ show: false, message: '' });
-    // FIX 2: State untuk menyimpan video pembelajaran dari YouTube
     const [learningVideos, setLearningVideos] = useState([]);
 
     const showToast = (message) => {
@@ -389,7 +393,6 @@ const AppProvider = ({ children }) => {
     const contextValue = useMemo(() => ({ level, track, subject }), [level, track, subject]);
     const addHistory = useCallback((item) => setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50)), [setHistory]);
 
-    // FIX 5: Tombol selesai belajar mengarah ke dashboard dan memunculkan notifikasi
     const handleMarkAsComplete = async (topic) => {
         if (!user || !topic) return;
         try {
@@ -400,19 +403,17 @@ const AppProvider = ({ children }) => {
                 subjectName: subject?.name || 'Unknown',
             });
             
-            // FIX 4: Update statistik total materi selesai untuk developer
             const statsRef = doc(db, "dev_stats", "main");
             await updateDoc(statsRef, { totalMaterialsCompleted: increment(1) });
             
             showToast("Kerja bagus! Materi telah ditandai selesai.");
-            setPage('dashboard'); // Arahkan ke dashboard
+            setPage('dashboard');
         } catch (err) {
             console.error("Gagal menandai selesai:", err);
             showToast("Gagal menyimpan progres, coba lagi nanti.");
         }
     };
 
-    // FIX 2: Fungsi untuk mencari video pembelajaran di YouTube
     const fetchLearningVideos = useCallback(async (searchTopic, subjectName) => {
         if (dataSaverMode) {
             setLearningVideos([]);
@@ -429,18 +430,16 @@ const AppProvider = ({ children }) => {
             }
         } catch (err) {
             console.error("Gagal mencari video YouTube:", err);
-            setLearningVideos([]); // Kosongkan jika error
+            setLearningVideos([]);
         }
     }, [dataSaverMode]);
     
-    const { dataSaverMode } = useContext(SettingsContext) || {};
-
     const fetchLearningMaterial = useCallback(async (searchTopic, isFromHistory = false) => {
         setIsLoading(true); 
         setLoadingMessage('Guru AI sedang menyiapkan materimu...'); 
         setError(null); 
         setLearningData(null); 
-        setLearningVideos([]); // Reset video setiap mencari materi baru
+        setLearningVideos([]);
         setPage('belajar'); 
         setScreen('lesson');
 
@@ -452,7 +451,6 @@ const AppProvider = ({ children }) => {
         try {
             const geminiData = await callGeminiAPI(geminiPrompt);
             setLearningData({ topic: searchTopic, ...geminiData });
-            // FIX 2: Panggil fungsi pencarian video YouTube setelah materi didapat
             await fetchLearningVideos(searchTopic, subject.name);
         } catch (err) {
             setError(`Gagal memuat materi: ${err.message}.`);
@@ -491,7 +489,7 @@ const AppProvider = ({ children }) => {
         loadingMessage, setLoadingMessage, isSidebarOpen, setSidebarOpen, contextValue,
         fetchLearningMaterial, fetchBankSoal, fetchRecommendations,
         handleMarkAsComplete, toast, showToast,
-        learningVideos // FIX 2: export state video
+        learningVideos
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -661,9 +659,6 @@ const DashboardPage = () => {
     useEffect(() => {
         setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
 
-        // FIX 1: Logika rekomendasi video di dashboard.
-        // Data diambil dari DevContext (yang mana dari Firestore), difilter video aktif,
-        // diacak, lalu ditampilkan. Ini sudah sesuai permintaan.
         if (featureFlags?.videoRecs && videos && videos.length > 0) {
             const activeVideos = videos.filter(v => v.isActive);
             const shuffled = [...activeVideos].sort(() => 0.5 - Math.random());
@@ -746,7 +741,6 @@ const DashboardPage = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {recommendedVideos.map(video => (
                                 <div key={video.id} className="bg-slate-100 dark:bg-slate-800/50 rounded-xl overflow-hidden shadow-sm">
-                                    {/* FIX 1: Video rekomendasi dapat diputar (embed) */}
                                     <div className="aspect-w-16 aspect-h-9 bg-black rounded-t-lg">
                                         <iframe 
                                             src={`https://www.youtube.com/embed/${video.id}`}
@@ -834,7 +828,6 @@ const DeveloperDashboardPage = () => {
         );
     }
     
-    // FIX 4: Sistem upload video sudah ada di sini.
     const handleAddVideo = async (e) => { 
         e.preventDefault(); 
         if(!newVideoUrl.trim()) return;
@@ -863,9 +856,6 @@ const DeveloperDashboardPage = () => {
 
     const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH', 'DB-WARN'];
     
-    // FIX 4: Tambahan statistik live untuk developer.
-    // 'stats.users' dan 'stats.totalMaterialsCompleted' kini live dari Firestore.
-    // Statistik performa server/CPU tidak dapat diambil dari sisi klien (React).
     const devStats = [
         { icon: <Users2 />, label: "Total Pengguna", value: stats.users || 0 },
         { icon: <BookCheck />, label: "Total Materi Selesai", value: stats.totalMaterialsCompleted || 0 },
@@ -914,7 +904,6 @@ const DeveloperDashboardPage = () => {
                 </div>
 
                 <div className="lg:col-span-1 flex flex-col">
-                    {/* FIX 4: Terminal console sudah live dan mencatat semua status */}
                     <InfoCard icon={<Terminal />} title="Developer Console" className="flex-grow flex flex-col">
                         <div className="mb-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
                             <Filter size={16} className="text-slate-500"/>
@@ -1035,6 +1024,9 @@ const ChatAiPage = () => {
 
 const UpdateLogPage = () => {
     const updates = [
+         { version: "v3.2.1", date: "26 Juni 2025 (Perbaikan Bug)", changes: [
+            "FIX: Mengatasi `ReferenceError` yang terjadi saat inisialisasi aplikasi.",
+         ]},
          { version: "v3.2.0", date: "26 Juni 2025 (Perbaikan)", changes: [
             "FIX: Data papan peringkat kini dihitung live dan snapshotnya disimpan ke database untuk persistensi.",
             "FIX: Menambahkan video pembelajaran relevan dari YouTube saat membuka materi pelajaran.",
@@ -1087,9 +1079,6 @@ const LeaderboardPage = () => {
                 const usersWithScores = await Promise.all(userPromises);
                 usersWithScores.sort((a, b) => b.score - a.score);
                 
-                // FIX 3: Simpan data papan peringkat ke database.
-                // Ini menyimpan "snapshot" dari data live saat halaman diakses.
-                // Data tetap dihitung live setiap kali, tapi juga disimpan untuk persistensi.
                 try {
                     const leaderboardRef = doc(db, "leaderboard_cache", "main");
                     await setDoc(leaderboardRef, {
@@ -1293,7 +1282,6 @@ const LearningMaterialScreen = () => {
                 
                 {ringkasan && <InfoCard icon={<Lightbulb />} title="Ringkasan"><p className="leading-relaxed">{ringkasan}</p></InfoCard>}
                 
-                {/* FIX 2: Tampilkan video pembelajaran jika ada */}
                 {learningVideos.length > 0 && (
                     <InfoCard icon={<Youtube />} title="Rekomendasi Video Pembelajaran">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1322,7 +1310,6 @@ const LearningMaterialScreen = () => {
                 {latihan_soal?.length > 0 && <InfoCard icon={<BookMarked />} title="Latihan Soal"><QuizPlayer questions={latihan_soal} /></InfoCard>}
                 
                 <div className="text-center pt-8">
-                    {/* FIX 5: Tombol ini sekarang memanggil handleMarkAsComplete yang sudah diperbaiki */}
                     <button onClick={() => handleMarkAsComplete(topic)} className="px-8 py-4 bg-green-500 text-white font-bold rounded-full shadow-lg hover:bg-green-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-3 group mx-auto">
                         <CheckCircle size={24} />
                         Tandai Selesai & Kembali ke Dashboard
@@ -1403,4 +1390,3 @@ styleSheet.innerText = `
     .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 `;
 document.head.appendChild(styleSheet);
-
