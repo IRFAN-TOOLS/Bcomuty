@@ -2,7 +2,7 @@ import React, { useState, useEffect, createContext, useContext, useCallback, use
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
-    getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, getDocs, writeBatch, serverTimestamp
+    getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, getDocs, writeBatch, serverTimestamp, setDoc, query
 } from 'firebase/firestore';
 import { 
     Search, Brain, BookOpen, Youtube, Lightbulb, FileText, ArrowLeft, Loader, Sparkles, 
@@ -12,14 +12,15 @@ import {
     PlusCircle, Terminal, Power, PowerOff, LayoutDashboard, Settings, User, LogOut, Moon, Sun, 
     Newspaper, Menu, Download, ShieldCheck, Info, MessageSquare, Award, Trophy, Users2, BrainCog,
     Wind, Text, Palette, ArrowUpRight, Save, Languages as TranslateIcon, Minimize2, WifiOff,
-    SendHorizonal, Bot, UserCircle, Tv, ToggleLeft, ToggleRight, Check, Eye, EyeOff
+    SendHorizonal, Bot, UserCircle, Tv, ToggleLeft, ToggleRight, Check, Eye, EyeOff, Filter, 
+    BarChartHorizontal, TrendingUp, BookCheck
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 // --- KONFIGURASI PENTING & API KEYS ---
 // CATATAN: Ganti dengan kunci Anda sendiri di environment produksi.
-const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik";
-const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
+const GEMINI_API_KEY = "MASUKKAN_API_KEY_GEMINI_ANDA";
+const YOUTUBE_API_KEY = "MASUKKAN_API_KEY_YOUTUBE_ANDA";
 
 const firebaseConfig = {
     apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // GANTI DENGAN API KEY ANDA
@@ -44,6 +45,16 @@ const AuthContext = createContext(null);
 const SettingsContext = createContext(null);
 const AppContext = createContext(null);
 const DevContext = createContext(null);
+
+// --- KUTIPAN MOTIVASI ---
+const motivationalQuotes = [
+    "Pendidikan adalah senjata paling ampuh yang bisa kamu gunakan untuk mengubah dunia. - Nelson Mandela",
+    "Satu-satunya sumber pengetahuan adalah pengalaman. - Albert Einstein",
+    "Belajar tidak pernah melelahkan pikiran. - Leonardo da Vinci",
+    "Masa depan adalah milik mereka yang mempersiapkannya hari ini. - Malcolm X",
+    "Jangan takut tumbuh lambat, takutlah hanya berdiri diam.",
+    "Semakin banyak kamu membaca, semakin banyak hal yang akan kamu ketahui. Semakin banyak kamu belajar, semakin banyak tempat yang akan kamu kunjungi. - Dr. Seuss"
+];
 
 // --- CUSTOM HOOKS ---
 function useLocalStorage(key, initialValue) {
@@ -117,14 +128,35 @@ const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isDeveloper, setIsDeveloper] = useState(false);
+    const [userData, setUserData] = useState(null);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setUser(user);
-            if (user) {
-                setIsDeveloper(DEV_ACCOUNTS.includes(user.email));
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            if (currentUser) {
+                setIsDeveloper(DEV_ACCOUNTS.includes(currentUser.email));
+                
+                // Simpan data pengguna ke Firestore jika belum ada
+                const userRef = doc(db, 'users', currentUser.uid);
+                onSnapshot(userRef, (docSnap) => {
+                    if (!docSnap.exists()) {
+                        setDoc(userRef, {
+                            uid: currentUser.uid,
+                            displayName: currentUser.displayName,
+                            email: currentUser.email,
+                            photoURL: currentUser.photoURL,
+                            createdAt: serverTimestamp(),
+                            lastLogin: serverTimestamp()
+                        });
+                    } else {
+                        updateDoc(userRef, { lastLogin: serverTimestamp() });
+                        setUserData(docSnap.data());
+                    }
+                });
+
             } else {
                 setIsDeveloper(false);
+                setUserData(null);
             }
             setLoading(false);
         });
@@ -152,7 +184,7 @@ const AuthProvider = ({ children }) => {
         }
     };
 
-    const value = { user, loading, loginWithGoogle, logout, isDeveloper };
+    const value = { user, userData, loading, loginWithGoogle, logout, isDeveloper };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
@@ -161,10 +193,8 @@ const SettingsProvider = ({ children }) => {
     const [fontSize, setFontSize] = useLocalStorage('bdukasi-font-size-v3', 'base');
     const [language, setLanguage] = useLocalStorage('bdukasi-language-v3', 'id');
     const [dataSaverMode, setDataSaverMode] = useLocalStorage('bdukasi-data-saver-v3', false);
-    const [animationsEnabled, setAnimationsEnabled] = useLocalStorage('bdukasi-animations-v3', true);
     const [dyslexiaFont, setDyslexiaFont] = useLocalStorage('bdukasi-dyslexia-v3', false);
-    
-    // Fitur kontrol ini sekarang akan diambil dari DevContext
+
     const { featureFlags } = useContext(DevContext) || {};
 
     const activeTheme = useMemo(() => {
@@ -179,10 +209,10 @@ const SettingsProvider = ({ children }) => {
         root.classList.remove('light', 'dark');
         root.classList.add(activeTheme);
     }, [activeTheme]);
-    
+
     useEffect(() => {
         const root = window.document.documentElement;
-        
+
         const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
         const handleChange = () => {
             if (theme === 'system') {
@@ -202,70 +232,84 @@ const SettingsProvider = ({ children }) => {
         const fontSizes = ['sm', 'base', 'lg', 'xl'];
         fontSizes.forEach(size => root.classList.remove(`font-size-${size}`));
         root.classList.add(`font-size-${fontSize}`);
-
-        root.classList.toggle('no-animations', !animationsEnabled);
+        
         root.classList.toggle('dyslexia-friendly', dyslexiaFont);
-        // Mode fokus dikontrol oleh flag dari developer
         root.classList.toggle('focus-mode', featureFlags?.focusMode);
+    }, [fontSize, dyslexiaFont, featureFlags]);
 
-    }, [theme, fontSize, animationsEnabled, dyslexiaFont, featureFlags]);
-
-    const value = { theme, setTheme, activeTheme, fontSize, setFontSize, language, setLanguage, dataSaverMode, setDataSaverMode, animationsEnabled, setAnimationsEnabled, dyslexiaFont, setDyslexiaFont };
+    const value = { theme, setTheme, activeTheme, fontSize, setFontSize, language, setLanguage, dataSaverMode, setDataSaverMode, dyslexiaFont, setDyslexiaFont };
     return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 };
 
 const DevProvider = ({ children }) => {
     const [videos, setVideos] = useState([]);
-    const [stats, setStats] = useState({ users: 0, materials: 0, questions: 0, lastActivity: 'N/A' });
+    const [stats, setStats] = useState({ users: 0, materials: 0, questions: 0, lastActivity: 'N/A', totalStudyTime: 0 });
     const [logs, setLogs] = useState([`[${new Date().toLocaleTimeString()}] [SYSTEM] Developer console initialized.`]);
-    const [featureFlags, setFeatureFlags] = useState({ focusMode: false, timerMode: false, dailyPractice: false });
+    const [featureFlags, setFeatureFlags] = useState({ 
+        focusMode: false, 
+        backgroundSound: false, 
+        dailyMissions: false,
+        aiAvatar: false,
+        videoRecs: true
+    });
     const [loading, setLoading] = useState(true);
 
-    // Fetch initial data from Firestore
+    const addLog = (message, type = 'INFO') => {
+        const timestamp = new Date().toLocaleTimeString();
+        setLogs(prev => [`[${timestamp}] [${type}] ${message}`, ...prev].slice(-100));
+    };
+
     useEffect(() => {
         setLoading(true);
+        addLog("Initializing Developer Context...", "SYSTEM");
+
         const unsubscribers = [
             onSnapshot(collection(db, "dev_youtube_videos"), (snapshot) => {
                 const fetchedVideos = snapshot.docs.map(doc => ({ fbId: doc.id, ...doc.data() }));
                 setVideos(fetchedVideos);
-                addLog(`[DB] Fetched ${fetchedVideos.length} videos.`);
-            }),
+                addLog(`Fetched ${fetchedVideos.length} videos.`, "DB");
+            }, error => addLog(`Video fetch failed: ${error.message}`, "ERROR")),
+
             onSnapshot(doc(db, "dev_stats", "main"), (doc) => {
                 if (doc.exists()) {
-                    setStats(doc.data());
-                    addLog(`[DB] Fetched live stats.`);
+                    setStats(s => ({ ...s, ...doc.data() }));
+                    addLog("Live stats updated.", "DB");
                 } else {
-                     addLog(`[DB-ERROR] Stats document not found.`);
+                     addLog("Stats document not found.", "DB-WARN");
                 }
-            }),
+            }, error => addLog(`Stats fetch failed: ${error.message}`, "ERROR")),
+
             onSnapshot(doc(db, "dev_feature_flags", "main"), (doc) => {
                 if(doc.exists()){
-                    setFeatureFlags(doc.data());
-                    addLog(`[DB] Fetched feature flags.`);
+                    setFeatureFlags(f => ({...f, ...doc.data()}));
+                    addLog("Feature flags loaded.", "DB");
                 } else {
-                    addLog(`[DB-ERROR] Feature flags document not found.`);
+                    addLog("Feature flags document not found. Using defaults.", "DB-WARN");
+                    // Create if not exists
+                    setDoc(doc(db, "dev_feature_flags", "main"), featureFlags);
                 }
-            })
+            }, error => addLog(`Flags fetch failed: ${error.message}`, "ERROR")),
+            
+            onSnapshot(collection(db, "users"), (snapshot) => {
+                setStats(prev => ({...prev, users: snapshot.size}));
+                addLog(`User count updated to ${snapshot.size}.`, "DB");
+            }, error => addLog(`User count fetch failed: ${error.message}`, "ERROR"))
         ];
-        
-        // Dummy user count for demonstration
-        getDocs(collection(db, "users")).then(snap => {
-            setStats(prev => ({...prev, users: snap.size}));
-        });
-        
+
         setLoading(false);
 
-        return () => unsubscribers.forEach(unsub => unsub());
+        return () => {
+            unsubscribers.forEach(unsub => unsub());
+            addLog("Developer Context cleaned up.", "SYSTEM");
+        };
     }, []);
-
-    const addLog = (message) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev].slice(-50));
 
     const addVideo = async (url) => {
         try {
             const videoId = new URL(url).searchParams.get('v');
             if (!videoId) throw new Error("URL YouTube tidak valid.");
 
-            // Fetch video title from YouTube API
+            addLog(`Fetching title for video ID: ${videoId}`, "API");
             const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${YOUTUBE_API_KEY}&part=snippet`);
             if (!response.ok) throw new Error("Gagal mengambil data dari YouTube API.");
             const data = await response.json();
@@ -279,33 +323,37 @@ const DevProvider = ({ children }) => {
                 addedAt: serverTimestamp() 
             };
             await addDoc(collection(db, "dev_youtube_videos"), newVideo);
-            addLog(`[SUCCESS] Video ditambahkan: ${title}`);
+            addLog(`Video added: ${title}`, "SUCCESS");
         } catch (error) {
-            addLog(`[ERROR] Gagal menambah video: ${error.message}`);
+            addLog(`Failed to add video: ${error.message}`, "ERROR");
             console.error(error);
         }
     };
 
     const deleteVideo = async (fbId) => {
         await deleteDoc(doc(db, "dev_youtube_videos", fbId));
-        addLog(`[INFO] Video dengan ID ${fbId} telah dihapus.`);
+        addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
     };
 
     const toggleVideoStatus = async (fbId, currentStatus) => {
         await updateDoc(doc(db, "dev_youtube_videos", fbId), { isActive: !currentStatus });
-        addLog(`[CONFIG] Status video ${fbId} diubah menjadi ${!currentStatus ? 'AKTIF' : 'NONAKTIF'}.`);
+        addLog(`Video status ${fbId} changed to ${!currentStatus ? 'ACTIVE' : 'INACTIVE'}.`, "CONFIG");
     };
-    
+
     const updateVideoTitle = async (fbId, newTitle) => {
         await updateDoc(doc(db, "dev_youtube_videos", fbId), { title: newTitle });
-        addLog(`[CONFIG] Judul video ${fbId} diperbarui.`);
+        addLog(`Video title ${fbId} updated.`, "CONFIG");
     }
 
     const toggleFeatureFlag = async (featureKey) => {
-        const currentFlags = doc(db, "dev_feature_flags", "main");
+        const flagsRef = doc(db, "dev_feature_flags", "main");
         const newValue = !featureFlags[featureKey];
-        await updateDoc(currentFlags, { [featureKey]: newValue });
-        addLog(`[CONFIG] Fitur '${featureKey}' sekarang ${newValue ? 'AKTIF' : 'NONAKTIF'}.`);
+        try {
+            await updateDoc(flagsRef, { [featureKey]: newValue });
+            addLog(`Feature '${featureKey}' is now ${newValue ? 'ACTIVE' : 'INACTIVE'}.`, "CONFIG");
+        } catch (error) {
+            addLog(`Failed to update flag '${featureKey}': ${error.message}`, "ERROR");
+        }
     };
 
     const value = { videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, stats, logs, addLog, featureFlags, toggleFeatureFlag, loading };
@@ -313,6 +361,7 @@ const DevProvider = ({ children }) => {
 }
 
 const AppProvider = ({ children }) => {
+    const { user } = useContext(AuthContext);
     const [page, setPage] = useState('dashboard');
     const [screen, setScreen] = useState('levelSelection');
     const [level, setLevel] = useState('');
@@ -326,9 +375,31 @@ const AppProvider = ({ children }) => {
     const [loadingMessage, setLoadingMessage] = useState('');
     const [error, setError] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [toast, setToast] = useState({ show: false, message: '' });
+
+    const showToast = (message) => {
+        setToast({ show: true, message });
+        setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    };
 
     const contextValue = useMemo(() => ({ level, track, subject }), [level, track, subject]);
     const addHistory = useCallback((item) => setHistory(prev => [item, ...prev.filter(h => h.topic !== item.topic)].slice(0, 50)), [setHistory]);
+
+    const handleMarkAsComplete = async (topic) => {
+        if (!user || !topic) return;
+        try {
+            const materialRef = doc(db, `users/${user.uid}/completed_materials`, topic.replace(/\s+/g, '-').toLowerCase());
+            await setDoc(materialRef, {
+                topic,
+                completedAt: serverTimestamp(),
+                subjectName: subject?.name || 'Unknown',
+            });
+            showToast("Kerja bagus, kamu luar biasa! Materi ditandai selesai.");
+        } catch (err) {
+            console.error("Gagal menandai selesai:", err);
+            showToast("Gagal menyimpan progres, coba lagi nanti.");
+        }
+    };
 
     const fetchLearningMaterial = useCallback(async (searchTopic, isFromHistory = false) => {
         setIsLoading(true); setLoadingMessage('Guru AI sedang menyiapkan materimu...'); setError(null); setLearningData(null); setPage('belajar'); setScreen('lesson');
@@ -337,15 +408,10 @@ const AppProvider = ({ children }) => {
         if (!isFromHistory) addHistory({ topic: searchTopic, level, track, subjectName: subject.name });
 
         const geminiPrompt = `Sebagai ahli materi pelajaran, buatkan ringkasan, materi lengkap (format Markdown bersih), dan 5 soal latihan pilihan ganda (A-E) dengan jawaban & penjelasan untuk topik '${searchTopic}' pelajaran '${subject.name}' tingkat ${level} ${track ? `jurusan ${track}`: ''}. Respons HANYA dalam format JSON: {"ringkasan": "...", "materi_lengkap": "...", "latihan_soal": [{"question": "...", "options": [...], "correctAnswer": "A", "explanation": "..."}]}`;
-
-        const youtubeSearchQuery = `${searchTopic} ${subject.name} pembahasan lengkap`;
-
+        
         try {
-            const [geminiData, videoData] = await Promise.all([
-                callGeminiAPI(geminiPrompt),
-                callYouTubeAPI(youtubeSearchQuery)
-            ]);
-            setLearningData({ topic: searchTopic, ...geminiData, video: videoData });
+            const geminiData = await callGeminiAPI(geminiPrompt);
+            setLearningData({ topic: searchTopic, ...geminiData });
         } catch (err) {
             setError(`Gagal memuat materi: ${err.message}.`);
             setPage('dashboard');
@@ -381,7 +447,8 @@ const AppProvider = ({ children }) => {
         learningData, setLearningData, recommendations, setRecommendations, bankSoal, setBankSoal, 
         isLoading, setIsLoading, error, setError, history, addHistory, 
         loadingMessage, setLoadingMessage, isSidebarOpen, setSidebarOpen, contextValue,
-        fetchLearningMaterial, fetchBankSoal, fetchRecommendations 
+        fetchLearningMaterial, fetchBankSoal, fetchRecommendations,
+        handleMarkAsComplete, toast, showToast
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -391,16 +458,10 @@ const AppProvider = ({ children }) => {
 // --- FUNGSI API HELPER ---
 const callGeminiAPI = async (prompt, chatHistory = []) => {
     console.log("[API Call] Memanggil Gemini API...");
-    if (!GEMINI_API_KEY) throw new Error("Kunci API Gemini belum diatur.");
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "MASUKKAN_API_KEY_GEMINI_ANDA") throw new Error("Kunci API Gemini belum diatur.");
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
-    
     const contents = chatHistory.length > 0 ? [...chatHistory, { role: "user", parts: [{ text: prompt }] }] : [{ role: "user", parts: [{ text: prompt }] }];
-
-    const payload = {
-        contents,
-        generationConfig: { response_mime_type: "application/json" }
-    };
-
+    const payload = { contents, generationConfig: { response_mime_type: "application/json" } };
     try {
         const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) { const errorBody = await response.json(); throw new Error(`Permintaan API Gemini gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`); }
@@ -410,42 +471,12 @@ const callGeminiAPI = async (prompt, chatHistory = []) => {
         const cleanedText = text.replace(/^```(json)?\s*|```$/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (error) {
-        // Fallback for non-JSON responses in chat
         if (error instanceof SyntaxError) {
-             const result = await response.json();
+             const result = await (await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
              return result.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, terjadi kesalahan dalam memproses jawaban.";
         }
         console.error("[API Exception] Terjadi kesalahan Gemini:", error);
         throw error;
-    }
-};
-
-const callYouTubeAPI = async (query) => {
-    console.log("[API Call] Memanggil YouTube API untuk query:", query);
-    if (!YOUTUBE_API_KEY) {
-        console.warn("[API Warning] Kunci API YouTube tidak ada. Pencarian video dilewati.");
-        return null; 
-    }
-    const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&maxResults=1&type=video&videoDuration=long`;
-
-    try {
-        const response = await fetch(API_URL);
-        if (!response.ok) {
-            const errorBody = await response.json();
-            throw new Error(`Permintaan API YouTube gagal: ${errorBody.error?.message || 'Error tidak diketahui'}`);
-        }
-        const result = await response.json();
-        const item = result.items?.[0];
-        if (!item) return null;
-
-        return {
-            id: item.id.videoId,
-            title: item.snippet.title,
-            embedUrl: `https://www.youtube.com/embed/${item.id.videoId}`
-        };
-    } catch (error) {
-        console.error("[API Exception] Terjadi kesalahan YouTube:", error);
-        return null;
     }
 };
 
@@ -466,7 +497,7 @@ export default function App() {
 
 const MainApp = () => {
     const { loading: authLoading, user } = useContext(AuthContext);
-    const { isLoading: appIsLoading, loadingMessage } = useContext(AppContext);
+    const { isLoading: appIsLoading, loadingMessage, toast } = useContext(AppContext);
     const [showPWAInstall, setShowPWAInstall] = useState(false);
     const { canInstall, isAppInstalled } = usePWAInstall();
 
@@ -474,7 +505,7 @@ const MainApp = () => {
         if (canInstall && !isAppInstalled) {
             const timer = setTimeout(() => {
                 setShowPWAInstall(true);
-            }, 7000); // Tampilkan setelah 7 detik
+            }, 7000); 
             return () => clearTimeout(timer);
         }
     }, [canInstall, isAppInstalled]);
@@ -494,6 +525,7 @@ const MainApp = () => {
     return (
       <>
         {showPWAInstall && <PWAInstallPopup onClose={() => setShowPWAInstall(false)} />}
+        {toast.show && <ToastNotification message={toast.message} />}
         <AppLayout />
       </>
     );
@@ -506,6 +538,7 @@ const AppLayout = () => {
         'dashboard': <DashboardPage />,
         'belajar': <LearningFlow />,
         'tanya-ai': <ChatAiPage />,
+        'leaderboard': <LeaderboardPage />,
         'settings': <SettingsPage />,
         'pembaruan': <UpdateLogPage />,
         'developer': <DeveloperDashboardPage />,
@@ -530,19 +563,11 @@ const AppLayout = () => {
 
 const LandingPage = () => {
     const { loginWithGoogle, loading } = useContext(AuthContext);
-
     const features = [
         { icon: <BrainCog size={28} />, title: "Guru AI Cerdas", text: "Dapatkan penjelasan, ringkasan, dan jawaban instan untuk setiap pertanyaanmu." },
         { icon: <Video size={28} />, title: "Video Terkurasi", text: "Belajar dari video pilihan berkualitas yang relevan dengan materimu." },
-        { icon: <Trophy size={28} />, title: "Misi & Latihan", text: "Asah pemahamanmu dengan latihan soal dan misi harian yang menantang." }
+        { icon: <Trophy size={28} />, title: "Papan Peringkat", text: "Asah pemahamanmu dan bersaing sehat dengan pelajar lain." }
     ];
-
-    const stats = [
-        { value: "1.3K+", label: "Pelajar Terdaftar" },
-        { value: "50+", label: "Materi Belajar" },
-        { value: "24/7", label: "Bantuan AI" }
-    ];
-
     return (
         <div className="bg-slate-50 min-h-screen text-slate-800">
             <header className="absolute top-0 left-0 w-full p-6 z-10 flex justify-between items-center">
@@ -554,7 +579,6 @@ const LandingPage = () => {
                     {loading ? <Loader className="animate-spin" size={20}/> : "Mulai Belajar"}
                 </button>
             </header>
-
             <main className="pt-32 pb-16 px-6">
                 <section className="text-center max-w-4xl mx-auto">
                     <h2 className="text-4xl md:text-6xl font-extrabold text-slate-900 leading-tight">
@@ -568,18 +592,6 @@ const LandingPage = () => {
                         Masuk dan Mulai Sekarang
                     </button>
                 </section>
-
-                <section className="mt-24 max-w-5xl mx-auto">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
-                        {stats.map(stat => (
-                            <div key={stat.label}>
-                                <p className="text-4xl font-bold text-cyan-500">{stat.value}</p>
-                                <p className="text-slate-500 mt-1">{stat.label}</p>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-                 
                 <section className="mt-24 max-w-5xl mx-auto">
                      <h3 className="text-3xl font-bold text-center mb-12">Semua yang Kamu Butuhkan</h3>
                      <div className="grid md:grid-cols-3 gap-8">
@@ -601,80 +613,110 @@ const LandingPage = () => {
 const DashboardPage = () => {
     const { setPage } = useContext(AppContext);
     const { user } = useContext(AuthContext);
-    const { videos, featureFlags, stats } = useContext(DevContext);
+    const { videos, featureFlags } = useContext(DevContext);
     const [recommendedVideos, setRecommendedVideos] = useState([]);
+    const [quote, setQuote] = useState('');
+    const [userStats, setUserStats] = useState({ completed: 0, time: "N/A" });
+    const [loadingStats, setLoadingStats] = useState(true);
 
     useEffect(() => {
-        if (videos && videos.length > 0) {
+        setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
+
+        if (featureFlags?.videoRecs && videos && videos.length > 0) {
             const activeVideos = videos.filter(v => v.isActive);
-            // Simple shuffle and pick 3
             const shuffled = [...activeVideos].sort(() => 0.5 - Math.random());
             setRecommendedVideos(shuffled.slice(0, 3));
         }
-    }, [videos]);
 
-    const availableFeatures = Object.values(featureFlags || {}).filter(Boolean).length;
+        if (user) {
+            setLoadingStats(true);
+            const statsRef = collection(db, `users/${user.uid}/completed_materials`);
+            getDocs(statsRef).then(snapshot => {
+                setUserStats(prev => ({ ...prev, completed: snapshot.size }));
+                setLoadingStats(false);
+            }).catch(console.error);
+        }
+    }, [videos, user, featureFlags]);
 
     return (
         <AnimatedScreen customKey="dashboard">
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold mb-1">Dashboard Bdukasi</h1>
-                    <p className="text-lg text-slate-500 dark:text-slate-400">Selamat datang kembali, {user?.displayName?.split(' ')[0] || 'Juara'}!</p>
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold mb-1">Dashboard Bdukasi</h1>
+                <p className="text-lg text-slate-500 dark:text-slate-400">Selamat datang kembali, {user?.displayName?.split(' ')[0] || 'Juara'}!</p>
+            </div>
+            
+            <InfoCard icon={<Lightbulb />} title="Kutipan Hari Ini" className="mb-6 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
+                 <p className="text-lg italic text-amber-800 dark:text-amber-200 text-center">"{quote}"</p>
+            </InfoCard>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <DashboardCard 
+                        icon={<BrainCircuit size={32} />} 
+                        title="Mulai Belajar" 
+                        description="Pilih jenjang & mapel untuk dijelajahi." 
+                        onClick={() => { setPage('belajar'); }} 
+                        className="bg-cyan-500 text-white hover:bg-cyan-600 !items-start" 
+                    />
+                    <DashboardCard 
+                        icon={<MessageSquare size={32} />} 
+                        title="Tanya AI" 
+                        description="Ada pertanyaan? Tanya Kak Spenta." 
+                        onClick={() => { setPage('tanya-ai'); }}
+                        className="bg-white dark:bg-slate-800"
+                    />
+                    <DashboardCard 
+                        icon={<Trophy size={32} />} 
+                        title="Papan Peringkat" 
+                        description="Lihat posisimu di antara para juara." 
+                        onClick={() => { setPage('leaderboard'); }}
+                        className="bg-white dark:bg-slate-800"
+                    />
+                     <DashboardCard 
+                        icon={<Award size={32} />} 
+                        title="Misi Harian" 
+                        description="Segera hadir!" 
+                        onClick={() => {}} 
+                        className="bg-white dark:bg-slate-800"
+                        disabled={true} // !featureFlags?.dailyMissions
+                    />
                 </div>
-                <div className="flex gap-4 mt-4 sm:mt-0">
-                    <div className="text-center bg-cyan-100/50 dark:bg-cyan-900/50 p-3 rounded-xl">
-                        <p className="font-bold text-xl text-cyan-600 dark:text-cyan-300">{stats?.materials || '0'}</p>
-                        <p className="text-xs text-cyan-700 dark:text-cyan-400">Materi Tersedia</p>
-                    </div>
-                    <div className="text-center bg-green-100/50 dark:bg-green-900/50 p-3 rounded-xl">
-                        <p className="font-bold text-xl text-green-600 dark:text-green-300">{availableFeatures}</p>
-                        <p className="text-xs text-green-700 dark:text-green-400">Fitur Aktif</p>
-                    </div>
+
+                <div className="lg:col-span-1">
+                    <InfoCard icon={<BarChart2 />} title="Statistik Kamu">
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
+                                <span className="font-semibold text-slate-600 dark:text-slate-300">Materi Selesai</span>
+                                {loadingStats ? <Loader size={20} className="animate-spin text-cyan-500" /> : <span className="font-bold text-2xl text-cyan-500">{userStats.completed}</span>}
+                            </div>
+                            <div className="flex justify-between items-center p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
+                                <span className="font-semibold text-slate-600 dark:text-slate-300">Waktu Belajar (Minggu ini)</span>
+                                <span className="font-bold text-2xl text-cyan-500">{userStats.time}</span>
+                            </div>
+                        </div>
+                    </InfoCard>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <DashboardCard 
-                    icon={<BrainCircuit size={40} />} 
-                    title="Mulai Belajar" 
-                    description="Pilih jenjang & mapel untuk dijelajahi." 
-                    onClick={() => { setPage('belajar'); }} 
-                    className="bg-cyan-500 text-white hover:bg-cyan-600 col-span-1 row-span-2 !flex-col !items-start !justify-between" 
-                />
-                 <DashboardCard 
-                    icon={<MessageSquare size={32} />} 
-                    title="Tanya AI" 
-                    description="Ada pertanyaan? Tanyakan pada Kak Spenta." 
-                    onClick={() => { setPage('tanya-ai'); }}
-                    className="bg-white dark:bg-slate-800"
-                />
-                <DashboardCard 
-                    icon={<Award size={32} />} 
-                    title="Misi Harian" 
-                    description="Selesaikan tantangan & dapatkan poin." 
-                    onClick={() => {}} 
-                    className="bg-white dark:bg-slate-800"
-                    disabled={!featureFlags?.dailyPractice}
-                />
-            </div>
-            
-            {recommendedVideos.length > 0 && (
+            {featureFlags?.videoRecs && recommendedVideos.length > 0 && (
                 <div className="mt-8">
-                    <InfoCard icon={<Tv />} title="Rekomendasi Video Edukasi Untukmu">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <InfoCard icon={<Tv />} title="Rekomendasi Video Edukasi">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {recommendedVideos.map(video => (
-                                <a key={video.id} href={video.url} target="_blank" rel="noopener noreferrer" className="group block bg-slate-100 dark:bg-slate-800/50 rounded-xl overflow-hidden transform hover:-translate-y-1 transition-transform duration-300 shadow-sm hover:shadow-lg">
-                                    <div className="relative">
-                                        <img src={`https://img.youtube.com/vi/${video.id}/mqdefault.jpg`} alt={video.title} className="w-full aspect-video object-cover"/>
-                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Youtube size={48} className="text-white"/>
-                                        </div>
+                                <div key={video.id} className="bg-slate-100 dark:bg-slate-800/50 rounded-xl overflow-hidden shadow-sm">
+                                    <div className="aspect-w-16 aspect-h-9 bg-black rounded-t-lg">
+                                        <iframe 
+                                            src={`https://www.youtube.com/embed/${video.id}`}
+                                            title={video.title}
+                                            frameBorder="0" 
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                            allowFullScreen>
+                                        </iframe>
                                     </div>
                                     <div className="p-4">
                                         <h3 className="font-semibold text-sm line-clamp-2 text-slate-800 dark:text-slate-200">{video.title}</h3>
                                     </div>
-                                </a>
+                                </div>
                             ))}
                         </div>
                     </InfoCard>
@@ -688,7 +730,7 @@ const SettingsPage = () => {
     const { user, logout } = useContext(AuthContext);
     const {
         theme, setTheme, fontSize, setFontSize, language, setLanguage,
-        dataSaverMode, setDataSaverMode, animationsEnabled, setAnimationsEnabled, dyslexiaFont, setDyslexiaFont
+        dataSaverMode, setDataSaverMode, dyslexiaFont, setDyslexiaFont
     } = useContext(SettingsContext);
 
     const fontOptions = [ { value: 'sm', label: 'Kecil' }, { value: 'base', label: 'Normal' }, { value: 'lg', label: 'Besar' }];
@@ -715,10 +757,8 @@ const SettingsPage = () => {
                 <InfoCard icon={<Palette size={24} />} title="Tampilan & Aksesibilitas">
                     <div className="space-y-6">
                         <SettingOptionGroup label="Tema Aplikasi" options={themeOptions} selected={theme} onChange={setTheme} isIconGroup={true} />
-                        <SettingToggle label="Animasi" icon={<Wind/>} isEnabled={animationsEnabled} onToggle={() => setAnimationsEnabled(p => !p)} />
                         <SettingToggle label="Font Disleksia" icon={<Text/>} isEnabled={dyslexiaFont} onToggle={() => setDyslexiaFont(p => !p)} />
-                        <SettingToggle label="Hemat Kuota" icon={<WifiOff />} isEnabled={dataSaverMode} onToggle={() => setDataSaverMode(p => !p)} hint="Mematikan pemuatan gambar otomatis pada beberapa fitur."/>
-
+                        <SettingToggle label="Hemat Kuota" icon={<WifiOff />} isEnabled={dataSaverMode} onToggle={() => setDataSaverMode(p => !p)} hint="Mematikan pemuatan aset berkualitas tinggi."/>
                         <SettingOptionGroup label="Ukuran Font" options={fontOptions} selected={fontSize} onChange={setFontSize} />
                         <SettingOptionGroup label="Bahasa" options={langOptions} selected={language} onChange={setLanguage} icon={<TranslateIcon />}/>
                     </div>
@@ -731,22 +771,31 @@ const SettingsPage = () => {
 const DeveloperDashboardPage = () => {
     const { user, isDeveloper } = useContext(AuthContext);
     const { 
-        stats, videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, logs, featureFlags, toggleFeatureFlag, loading 
+        stats, videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, logs, addLog, featureFlags, toggleFeatureFlag, loading 
     } = useContext(DevContext);
     const [newVideoUrl, setNewVideoUrl] = useState('');
     const [videoLoading, setVideoLoading] = useState(false);
     const [editingVideo, setEditingVideo] = useState(null);
+    const [logFilter, setLogFilter] = useState('ALL');
+    const filteredLogs = useMemo(() => {
+        if (logFilter === 'ALL') return logs;
+        return logs.filter(log => log.includes(`[${logFilter}]`));
+    }, [logs, logFilter]);
+    
+    useEffect(() => {
+        addLog("Data Error Render Test: Cannot read properties of null (reading 'map')", "ERROR");
+        addLog("Authentication failed for user 'test@example.com'", "AUTH");
+        addLog("API Request to /youtube/v3/videos timed out", "API");
+    }, [addLog]);
 
     if (!isDeveloper) {
         return (
             <AnimatedScreen customKey="dev-denied">
-                <InfoCard icon={<ShieldCheck />} title="Akses Ditolak">
-                    <p>Halaman ini hanya untuk developer.</p>
-                </InfoCard>
+                <InfoCard icon={<ShieldCheck />} title="Akses Ditolak"><p>Halaman ini hanya untuk developer.</p></InfoCard>
             </AnimatedScreen>
         );
     }
-
+    
     const handleAddVideo = async (e) => { 
         e.preventDefault(); 
         setVideoLoading(true);
@@ -754,7 +803,7 @@ const DeveloperDashboardPage = () => {
         setNewVideoUrl('');
         setVideoLoading(false);
     };
-    
+
     const handleUpdateTitle = (e) => {
         e.preventDefault();
         if(editingVideo && editingVideo.newTitle.trim()) {
@@ -762,19 +811,28 @@ const DeveloperDashboardPage = () => {
             setEditingVideo(null);
         }
     }
+    
+    const allFlags = [
+        { key: 'videoRecs', label: "Rekomendasi Video" },
+        { key: 'focusMode', label: "Mode Fokus" },
+        { key: 'backgroundSound', label: "Suara Latar" },
+        { key: 'dailyMissions', label: "Misi Harian" },
+        { key: 'aiAvatar', label: "Avatar AI" },
+    ];
+    
+    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH'];
 
     return (
         <AnimatedScreen customKey="dev-dashboard">
             <h1 className="text-3xl font-bold mb-2 flex items-center gap-3"><Server /> Developer Dashboard</h1>
             <p className="text-lg text-slate-500 dark:text-slate-400 mb-8">Mode Super Admin untuk {user?.displayName}.</p>
-            
-            {loading && <p>Memuat data developer...</p>}
 
-            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <StatCard icon={<Users />} label="Total Pengguna" value={stats.users} />
-                <StatCard icon={<BookOpen />} label="Total Materi" value={stats.materials} />
-                <StatCard icon={<HelpCircle />} label="Total Soal" value={stats.questions} />
-                <StatCard icon={<History />} label="Aktivitas Terakhir" value={stats.lastActivity} />
+            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
+                <StatCard icon={<Users2 />} label="Total Pengguna" value={stats.users} />
+                <StatCard icon={<BookOpen />} label="Materi Aktif" value={stats.materials || 0} />
+                <StatCard icon={<HelpCircle />} label="Total Soal" value={stats.questions || 0} />
+                <StatCard icon={<Users />} label="Pengguna Teraktif" value={"(coming soon)"} />
+                <StatCard icon={<TrendingUp />} label="Materi Populer" value={"(coming soon)"} />
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -792,7 +850,6 @@ const DeveloperDashboardPage = () => {
                                     <button onClick={() => toggleVideoStatus(video.fbId, video.isActive)} className="p-1">
                                         {video.isActive ? <Eye size={16} className="text-green-500"/> : <EyeOff size={16} className="text-slate-500"/>}
                                     </button>
-                                    <Youtube className="text-red-500 flex-shrink-0 mx-2" />
                                     <p className="flex-grow truncate text-sm" title={video.title}>{video.title}</p>
                                     <button className="p-2 hover:text-cyan-500 transition-colors" onClick={() => setEditingVideo({ ...video, newTitle: video.title })}><Edit size={16}/></button>
                                     <button className="p-2 hover:text-red-500 transition-colors" onClick={() => deleteVideo(video.fbId)}><Trash2 size={16}/></button>
@@ -800,39 +857,45 @@ const DeveloperDashboardPage = () => {
                             )) : <p className="text-center text-slate-500 p-4">Belum ada video.</p>}
                         </div>
                     </InfoCard>
-                     <InfoCard icon={<Power />} title="Kontrol Fitur Aplikasi">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                           <FeatureToggleCard featureKey="focusMode" label="Mode Fokus" isEnabled={featureFlags.focusMode} onToggle={toggleFeatureFlag} />
-                           <FeatureToggleCard featureKey="timerMode" label="Mode Timer" isEnabled={featureFlags.timerMode} onToggle={toggleFeatureFlag} />
-                           <FeatureToggleCard featureKey="dailyPractice" label="Latihan Harian" isEnabled={featureFlags.dailyPractice} onToggle={toggleFeatureFlag} />
+                     <InfoCard icon={<Power />} title="Kontrol Fitur Aplikasi (Live)">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                           {allFlags.map(flag => (
+                               <FeatureToggleCard key={flag.key} featureKey={flag.key} label={flag.label} isEnabled={featureFlags[flag.key]} onToggle={toggleFeatureFlag} />
+                           ))}
                         </div>
                     </InfoCard>
                 </div>
 
-                <InfoCard icon={<Terminal />} title="Developer Console" className="lg:col-span-1">
-                    <div className="bg-black text-white font-mono text-xs p-3 rounded-lg h-full overflow-y-auto">
-                        {logs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : ''}`}>{log}</p>)}
-                    </div>
-                </InfoCard>
+                <div className="lg:col-span-1 flex flex-col">
+                    <InfoCard icon={<Terminal />} title="Developer Console" className="flex-grow flex flex-col">
+                        <div className="mb-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+                            <Filter size={16} className="text-slate-500"/>
+                            <select value={logFilter} onChange={e => setLogFilter(e.target.value)} className="bg-slate-100 dark:bg-slate-700 text-xs rounded p-1 border-0 outline-none">
+                               {logCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                            </select>
+                        </div>
+                        <div className="bg-black text-white font-mono text-xs p-4 rounded-lg h-[400px] flex-grow overflow-y-auto">
+                            {filteredLogs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') || log.includes('[AUTH]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[CONFIG]') ? 'text-cyan-400' : 'text-slate-300'}`}>{log}</p>)}
+                        </div>
+                    </InfoCard>
+                </div>
             </div>
             {editingVideo && (
-                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setEditingVideo(null)}>
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold mb-4">Edit Judul Video</h3>
-                        <form onSubmit={handleUpdateTitle}>
-                            <input
-                                type="text"
-                                value={editingVideo.newTitle}
-                                onChange={(e) => setEditingVideo(v => ({...v, newTitle: e.target.value}))}
-                                className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500"
-                            />
-                            <div className="flex justify-end gap-3 mt-4">
-                                <button type="button" onClick={() => setEditingVideo(null)} className="px-4 py-2 bg-slate-200 dark:bg-slate-600 rounded-lg">Batal</button>
-                                <button type="submit" className="px-4 py-2 bg-cyan-500 text-white rounded-lg">Simpan</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                 <Modal onClose={() => setEditingVideo(null)}>
+                    <h3 className="text-xl font-bold mb-4">Edit Judul Video</h3>
+                    <form onSubmit={handleUpdateTitle}>
+                        <input
+                            type="text"
+                            value={editingVideo.newTitle}
+                            onChange={(e) => setEditingVideo(v => ({...v, newTitle: e.target.value}))}
+                            className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500"
+                        />
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button type="button" onClick={() => setEditingVideo(null)} className="px-4 py-2 bg-slate-200 dark:bg-slate-600 rounded-lg">Batal</button>
+                            <button type="submit" className="px-4 py-2 bg-cyan-500 text-white rounded-lg">Simpan</button>
+                        </div>
+                    </form>
+                </Modal>
             )}
         </AnimatedScreen>
     );
@@ -866,7 +929,6 @@ const ChatAiPage = () => {
         }));
 
         try {
-            // Menggunakan prompt khusus untuk jawaban non-JSON
             const prompt = `Sebagai "Kak Spenta AI", seorang guru yang ramah dan membantu, jawab pertanyaan berikut: ${input}`;
             const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
             const payload = {
@@ -880,7 +942,6 @@ const ChatAiPage = () => {
             if (!response.ok) throw new Error("API request failed");
             const result = await response.json();
             const aiResponse = result.candidates[0].content.parts[0].text;
-            
             setMessages(prev => [...prev, { role: 'model', content: aiResponse }]);
         } catch (error) {
             setMessages(prev => [...prev, { role: 'model', content: "Aduh, sepertinya ada sedikit gangguan di sirkuitku. Bisa coba tanyakan lagi?" }]);
@@ -895,56 +956,28 @@ const ChatAiPage = () => {
             <div className="flex flex-col h-[calc(100vh-10rem)] max-h-[800px] bg-white dark:bg-slate-800/50 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700/50">
                 <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
                     <Bot size={28} className="text-cyan-500" />
-                    <div>
-                        <h1 className="text-xl font-bold">Tanya Segalanya dengan Kak Spenta AI</h1>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Asisten belajar pribadimu, siap 24/7.</p>
-                    </div>
+                    <div><h1 className="text-xl font-bold">Tanya Segalanya dengan Kak Spenta AI</h1><p className="text-sm text-slate-500 dark:text-slate-400">Asisten belajar pribadimu, siap 24/7.</p></div>
                 </div>
-
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {messages.map((msg, index) => (
                         <div key={index} className={`flex items-start gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            {msg.role === 'model' && (
-                                <div className="w-10 h-10 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center text-white">
-                                    <Bot size={24} />
-                                </div>
-                            )}
-                            <div className={`max-w-xl p-4 rounded-2xl prose prose-sm dark:prose-invert max-w-none ${msg.role === 'user' ? 'bg-cyan-500 text-white rounded-br-none' : 'bg-slate-100 dark:bg-slate-700 rounded-bl-none'}`}>
-                               <ReactMarkdown>{msg.content}</ReactMarkdown>
-                            </div>
-                            {msg.role === 'user' && (
-                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex-shrink-0 flex items-center justify-center">
-                                    <UserCircle size={24} />
-                                </div>
-                            )}
+                            {msg.role === 'model' && (<div className="w-10 h-10 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center text-white"><Bot size={24} /></div>)}
+                            <div className={`max-w-xl p-4 rounded-2xl prose prose-sm dark:prose-invert max-w-none ${msg.role === 'user' ? 'bg-cyan-500 text-white rounded-br-none' : 'bg-slate-100 dark:bg-slate-700 rounded-bl-none'}`}><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                            {msg.role === 'user' && (<div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex-shrink-0 flex items-center justify-center"><UserCircle size={24} /></div>)}
                         </div>
                     ))}
                     {isThinking && (
                          <div className="flex items-start gap-4 justify-start">
                              <div className="w-10 h-10 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center text-white"><Bot size={24} /></div>
-                             <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 rounded-bl-none flex items-center gap-2">
-                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                             </div>
+                             <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 rounded-bl-none flex items-center gap-2"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div></div>
                          </div>
                     )}
                     <div ref={chatEndRef} />
                 </div>
-                
                 <div className="p-4 border-t border-slate-200 dark:border-slate-700">
                     <form onSubmit={handleSend} className="flex items-center gap-3">
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            placeholder="Ketik pertanyaanmu di sini..."
-                            disabled={isThinking}
-                            className="flex-1 w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-xl border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500 outline-none"
-                        />
-                        <button type="submit" disabled={isThinking || !input.trim()} className="p-3 bg-cyan-500 text-white rounded-xl hover:bg-cyan-600 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed">
-                            <SendHorizonal size={24} />
-                        </button>
+                        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ketik pertanyaanmu di sini..." disabled={isThinking} className="flex-1 w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-xl border border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-cyan-500 outline-none" />
+                        <button type="submit" disabled={isThinking || !input.trim()} className="p-3 bg-cyan-500 text-white rounded-xl hover:bg-cyan-600 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"><SendHorizonal size={24} /></button>
                     </form>
                 </div>
             </div>
@@ -954,17 +987,18 @@ const ChatAiPage = () => {
 
 const UpdateLogPage = () => {
     const updates = [
-        { version: "v3.0.0", date: "26 Juni 2025", changes: [
-            "Penambahan Halaman 'Tanya Segalanya': Chat interaktif dengan Kak Spenta AI (didukung Gemini).",
-            "Implementasi Developer Dashboard: statistik, pengelolaan video, dan kontrol fitur kini diambil dari Firestore secara live.",
-            "Dashboard Pengguna Ditingkatkan: Menampilkan 3 video rekomendasi acak dari developer, info jumlah materi & fitur aktif.",
-            "Desain Ulang Halaman Pengaturan: Opsi tema (terang, gelap, sistem) dan toggle simpan ke localStorage.",
-            "Integrasi PWA: Prompt instalasi aplikasi kini muncul saat kunjungan pertama.",
-            "Struktur Data Firestore: Menambahkan koleksi `dev_youtube_videos`, `dev_stats`, dan `dev_feature_flags` untuk data dinamis."
+         { version: "v3.1.0", date: "26 Juni 2025", changes: [
+            "Penambahan Fitur 'Papan Peringkat': Lihat peringkat berdasarkan materi yang diselesaikan.",
+            "Penyempurnaan Dashboard Developer: Statistik lebih detail, filter log interaktif, dan kontrol fitur yang diperluas.",
+            "Penyempurnaan Dashboard Pelajar: Menampilkan statistik pribadi (materi selesai) dan kutipan motivasi acak.",
+            "Penambahan Tombol 'Selesai Belajar': Progres belajar kini tersimpan di database.",
+            "Penambahan Mapel 'Sejarah' di semua jenjang.",
+            "Peningkatan Video Embed: Video rekomendasi kini bisa diputar langsung di dashboard."
         ]},
-        { version: "v2.2.0", date: "25 Juni 2025", changes: [
-            "Desain ulang Landing Page, Dashboard Pelajar, dan Halaman Pengaturan.",
-            "Penggantian warna tema utama menjadi Biru Toska (Cyan).",
+        { version: "v3.0.0", date: "25 Juni 2025", changes: [
+            "Penambahan Halaman 'Tanya Segalanya': Chat interaktif dengan Kak Spenta AI.",
+            "Implementasi Developer Dashboard Awal: Statistik, pengelolaan video, dan kontrol fitur via Firestore.",
+            "Integrasi PWA: Prompt instalasi aplikasi."
         ]},
     ];
 
@@ -984,14 +1018,90 @@ const UpdateLogPage = () => {
     );
 };
 
+const LeaderboardPage = () => {
+    const [leaderboardData, setLeaderboardData] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const { user } = useContext(AuthContext);
+
+    useEffect(() => {
+        const fetchLeaderboard = async () => {
+            setLoading(true);
+            try {
+                const usersSnapshot = await getDocs(collection(db, "users"));
+                const userPromises = usersSnapshot.docs.map(async (userDoc) => {
+                    const completedMaterialsSnapshot = await getDocs(collection(db, `users/${userDoc.id}/completed_materials`));
+                    return {
+                        ...userDoc.data(),
+                        score: completedMaterialsSnapshot.size
+                    };
+                });
+                
+                const usersWithScores = await Promise.all(userPromises);
+                usersWithScores.sort((a, b) => b.score - a.score);
+                setLeaderboardData(usersWithScores);
+            } catch (error) {
+                console.error("Failed to fetch leaderboard:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchLeaderboard();
+    }, []);
+
+    return (
+        <AnimatedScreen key="leaderboard">
+            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3"><Trophy className="text-amber-400" /> Papan Peringkat</h1>
+            <p className="text-lg text-slate-500 dark:text-slate-400 mb-8">Lihat siapa pelajar paling giat di Bdukasi!</p>
+
+            {loading ? (
+                <div className="text-center p-10"><Loader className="animate-spin mx-auto text-cyan-500" size={48} /></div>
+            ) : (
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+                    <div className="divide-y divide-slate-200 dark:divide-slate-700/50">
+                        {leaderboardData.map((player, index) => (
+                            <div key={player.uid} className={`p-4 flex items-center gap-4 transition-colors ${player.uid === user.uid ? 'bg-cyan-50 dark:bg-cyan-900/20' : ''}`}>
+                                <span className={`font-bold text-xl w-10 text-center ${index < 3 ? 'text-amber-500' : 'text-slate-400'}`}>{index + 1}</span>
+                                <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}`} alt={player.displayName} className="w-12 h-12 rounded-full" />
+                                <div className="flex-grow">
+                                    <p className="font-bold">{player.displayName}</p>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Poin: <span className="font-semibold text-slate-700 dark:text-slate-200">{player.score}</span></p>
+                                </div>
+                                {index === 0 && <Trophy size={24} className="text-amber-400" />}
+                                {index === 1 && <Trophy size={24} className="text-slate-400" />}
+                                {index === 2 && <Trophy size={24} className="text-amber-700" />}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </AnimatedScreen>
+    );
+};
+
+
 // --- KOMPONEN UI & PENDUKUNG LAINNYA ---
-// Komponen ini tidak saya ubah secara fundamental, hanya beberapa penyesuaian kecil.
+
+const ToastNotification = ({ message }) => (
+    <div className="fixed bottom-5 right-5 bg-slate-900 dark:bg-white text-white dark:text-black px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fadeInUp z-50">
+        <CheckCircle className="text-green-400" />
+        <p className="font-semibold">{message}</p>
+    </div>
+);
+
+const Modal = ({ children, onClose }) => (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+            {children}
+        </div>
+    </div>
+);
+
 
 const LoadingScreen = ({ message }) => (
     <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col items-center justify-center gap-6">
         <div className="relative w-24 h-24">
             <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Loading Logo" className="w-full h-full animate-pulse" onError={(e) => e.target.outerHTML = '<Brain class="w-full h-full text-cyan-500 animate-pulse" />'} />
-            <Sparkles className="absolute -top-2 -right-2 w-8 h-8 text-amber-400 animate-ping" />
         </div>
         <p className="text-xl font-semibold text-slate-600 dark:text-slate-300 text-center max-w-xs">{message || 'Memuat...'}</p>
     </div>
@@ -999,16 +1109,11 @@ const LoadingScreen = ({ message }) => (
 
 const PWAInstallPopup = ({ onClose }) => {
     const { triggerInstall } = usePWAInstall();
-
-    const handleInstallClick = () => {
-        triggerInstall();
-        onClose();
-    };
-
+    const handleInstallClick = () => { triggerInstall(); onClose(); };
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-8 text-center relative transform animate-fadeInUp">
-                <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X /></button>
+        <Modal onClose={onClose}>
+            <div className="text-center relative">
+                <button onClick={onClose} className="absolute -top-2 -right-2 text-slate-400 hover:text-slate-600"><X /></button>
                 <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="App Logo" className="w-20 h-20 mx-auto mb-4" onError={(e) => e.target.outerHTML = '<Brain class="w-20 h-20 mx-auto mb-4 text-cyan-500" />'} />
                 <h2 className="text-2xl font-bold">Install Aplikasi Bdukasi</h2>
                 <p className="text-slate-500 dark:text-slate-400 mt-2 mb-6">Dapatkan pengalaman belajar terbaik dengan menginstal aplikasi di perangkatmu.</p>
@@ -1016,13 +1121,13 @@ const PWAInstallPopup = ({ onClose }) => {
                     <Download size={20} /> Install Sekarang
                 </button>
             </div>
-        </div>
+        </Modal>
     );
 };
 
 const FeatureToggleCard = ({ featureKey, label, isEnabled, onToggle }) => (
     <div className={`p-4 rounded-xl text-center border-2 transition-all ${isEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/30' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'}`}>
-        <p className={`font-bold mb-2 ${isEnabled ? 'text-green-700 dark:text-green-300' : 'text-slate-700 dark:text-slate-300'}`}>{label}</p>
+        <p className={`font-bold mb-2 text-sm ${isEnabled ? 'text-green-700 dark:text-green-300' : 'text-slate-700 dark:text-slate-300'}`}>{label}</p>
         <button onClick={() => onToggle(featureKey)}>
             {isEnabled ? <ToggleRight size={32} className="text-green-500"/> : <ToggleLeft size={32} className="text-slate-500"/>}
         </button>
@@ -1031,17 +1136,7 @@ const FeatureToggleCard = ({ featureKey, label, isEnabled, onToggle }) => (
 
 const SettingToggle = ({ label, icon, isEnabled, onToggle, hint }) => (
     <div>
-        <div className="flex items-center justify-between">
-            <label className="font-semibold flex items-center gap-3">
-                {icon} {label}
-            </label>
-            <button
-                onClick={onToggle}
-                className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-cyan-500' : 'bg-slate-300 dark:bg-slate-600'}`}
-            >
-                <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-        </div>
+        <div className="flex items-center justify-between"><label className="font-semibold flex items-center gap-3">{icon} {label}</label><button onClick={onToggle} className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-cyan-500' : 'bg-slate-300 dark:bg-slate-600'}`}><span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} /></button></div>
         {hint && <p className="text-xs text-slate-400 mt-1 pl-9">{hint}</p>}
     </div>
 );
@@ -1049,18 +1144,7 @@ const SettingToggle = ({ label, icon, isEnabled, onToggle, hint }) => (
 const SettingOptionGroup = ({ label, options, selected, onChange, icon, isIconGroup = false }) => (
     <div>
         <label className="font-semibold block mb-2 flex items-center gap-2">{icon}{label}</label>
-        <div className="flex flex-wrap gap-2">
-            {options.map(opt => (
-                <button 
-                    key={opt.value} 
-                    onClick={() => onChange(opt.value)} 
-                    className={`px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 ${selected === opt.value ? 'bg-cyan-500 text-white' : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600'}`}
-                >
-                    {isIconGroup && opt.icon}
-                    <span>{opt.label}</span>
-                </button>
-            ))}
-        </div>
+        <div className="flex flex-wrap gap-2">{options.map(opt => (<button key={opt.value} onClick={() => onChange(opt.value)} className={`px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 ${selected === opt.value ? 'bg-cyan-500 text-white' : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600'}`}>{isIconGroup && opt.icon}<span>{opt.label}</span></button>))}</div>
     </div>
 );
 const StatCard = ({ icon, label, value }) => (
@@ -1075,13 +1159,15 @@ const StatCard = ({ icon, label, value }) => (
 
 const AnimatedScreen = ({ children, customKey }) => <div key={customKey} className="animate-fadeIn">{children}</div>;
 const DashboardCard = ({ icon, title, description, onClick, disabled, className = "" }) => (
-    <button onClick={onClick} disabled={disabled} className={`group p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-md text-left transform hover:-translate-y-1 transition-all duration-300 flex items-center gap-4 ${disabled ? 'opacity-50 cursor-not-allowed saturate-50' : 'hover:shadow-lg hover:shadow-cyan-500/10'} ${className}`}>
-        <div className={`p-3 rounded-xl ${!className.includes('bg-cyan') ? 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-500' : ''}`}>{icon}</div>
-        <div>
-            <h3 className="text-xl font-bold">{title}</h3>
-            <p className={`${className.includes('bg-cyan') ? 'text-cyan-100' : 'text-slate-500 dark:text-slate-400'}`}>{description}</p>
+    <button onClick={onClick} disabled={disabled} className={`group p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-md text-left transform hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between gap-4 ${disabled ? 'opacity-50 cursor-not-allowed saturate-50' : 'hover:shadow-lg hover:shadow-cyan-500/10'} ${className}`}>
+        <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-xl ${!className.includes('bg-cyan') ? 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-500' : ''}`}>{icon}</div>
+            <div>
+                <h3 className="text-xl font-bold">{title}</h3>
+                <p className={`${className.includes('bg-cyan') ? 'text-cyan-100' : 'text-slate-500 dark:text-slate-400'}`}>{description}</p>
+            </div>
         </div>
-        {!disabled && <ArrowUpRight className="ml-auto text-slate-400 group-hover:text-cyan-500 transition-transform group-hover:rotate-45"/>}
+        {!disabled && <ArrowUpRight className="ml-auto text-slate-400 group-hover:text-cyan-500 transition-transform group-hover:rotate-45 self-end"/>}
     </button>
 );
 
@@ -1091,9 +1177,7 @@ const Navbar = () => {
         <header className="sticky top-0 bg-white/70 dark:bg-slate-900/80 backdrop-blur-md z-10 border-b border-slate-200 dark:border-slate-700 md:hidden">
             <div className="px-4 h-16 flex items-center justify-between">
                 <div className="font-bold text-xl flex items-center gap-2"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-8 w-8" onError={(e) => e.target.outerHTML = '<Brain class="h-8 w-8 text-cyan-500" />'} /> Bdukasi</div>
-                <button onClick={() => setSidebarOpen(true)} className="md:hidden">
-                    <Menu />
-                </button>
+                <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Menu /></button>
             </div>
         </header>
     );
@@ -1101,13 +1185,13 @@ const Navbar = () => {
 
 const Sidebar = () => {
     const { page, setPage, isSidebarOpen, setSidebarOpen } = useContext(AppContext);
-    const { logout, user } = useContext(AuthContext);
-    const { isDeveloper } = useContext(AuthContext);
+    const { logout, user, isDeveloper } = useContext(AuthContext);
 
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
         { id: 'belajar', label: 'Mulai Belajar', icon: <BrainCircuit size={20} /> },
         { id: 'tanya-ai', label: 'Tanya AI', icon: <MessageSquare size={20} />},
+        { id: 'leaderboard', label: 'Papan Peringkat', icon: <Trophy size={20} />},
         { id: 'settings', label: 'Pengaturan', icon: <Settings size={20} /> },
         { id: 'pembaruan', label: 'Log Pembaruan', icon: <Newspaper size={20} /> },
     ];
@@ -1119,34 +1203,11 @@ const Sidebar = () => {
         <>
             <div onClick={() => setSidebarOpen(false)} className={`fixed inset-0 bg-black/50 z-20 md:hidden transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}></div>
             <aside className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col z-30 transition-transform md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                 <div className="flex items-center gap-3 text-2xl font-bold mb-10">
-                    <img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} />
-                    <span className="text-slate-800 dark:text-white">Bdukasi</span>
-                </div>
-                <nav className="flex-grow space-y-2">
-                    {navItems.map(item => (
-                         <button 
-                            key={item.id}
-                            onClick={() => { setPage(item.id); setSidebarOpen(false); }}
-                            className={`w-full flex items-center gap-4 px-4 py-3 rounded-lg transition-colors text-base ${page === item.id ? 'bg-cyan-500 text-white font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                        >
-                            {React.cloneElement(item.icon, { className: page === item.id ? 'text-white' : 'text-slate-500' })}
-                            <span>{item.label}</span>
-                        </button>
-                    ))}
-                </nav>
+                 <div className="flex items-center gap-3 text-2xl font-bold mb-10"><img src="https://lh3.googleusercontent.com/u/0/d/1x9XzTfUe64N2dzTrYOdF05Ncl67d9Dcn" alt="Logo" className="h-10 w-10" onError={(e) => e.target.outerHTML = '<Brain class="h-10 w-10 text-cyan-500" />'} /><span className="text-slate-800 dark:text-white">Bdukasi</span></div>
+                <nav className="flex-grow space-y-2">{navItems.map(item => (<button key={item.id} onClick={() => { setPage(item.id); setSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-4 py-3 rounded-lg transition-colors text-base ${page === item.id ? 'bg-cyan-500 text-white font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{React.cloneElement(item.icon, { className: page === item.id ? 'text-white' : 'text-slate-500' })}<span>{item.label}</span></button>))}</nav>
                 <div className="mt-auto">
-                    <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/50 mb-4">
-                        <img src={user?.photoURL} alt="Avatar" className="w-10 h-10 rounded-full" />
-                        <div>
-                            <p className="font-semibold text-sm line-clamp-1">{user?.displayName}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{user?.email}</p>
-                        </div>
-                    </div>
-                    <button onClick={logout} className="w-full flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 font-semibold">
-                        <LogOut size={20}/>
-                        <span>Keluar</span>
-                    </button>
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/50 mb-4"><img src={user?.photoURL} alt="Avatar" className="w-10 h-10 rounded-full" /><div className='overflow-hidden'><p className="font-semibold text-sm line-clamp-1">{user?.displayName}</p><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{user?.email}</p></div></div>
+                    <button onClick={logout} className="w-full flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 font-semibold"><LogOut size={20}/><span>Keluar</span></button>
                 </div>
             </aside>
         </>
@@ -1156,39 +1217,31 @@ const Sidebar = () => {
 const InfoCard = ({ icon, title, children, className = '' }) => <div className={`bg-white dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/50 rounded-2xl shadow-sm overflow-hidden ${className} animate-fadeInUp`}><div className="p-4 border-b border-slate-200/80 dark:border-slate-700/50 flex items-center gap-3">{icon && <div className="text-cyan-500">{React.cloneElement(icon, { size: 24 })}</div>}<h2 className="text-xl font-bold">{title}</h2></div><div className="p-4 sm:p-6">{children}</div></div>;
 const LearningFlow = () => { const { screen } = useContext(AppContext); return <ScreenContainer />; };
 const LearningMaterialScreen = () => {
-    const { learningData, setScreen } = useContext(AppContext);
+    const { learningData, setScreen, handleMarkAsComplete } = useContext(AppContext);
     if (!learningData) return <div className="text-center p-8">Materi tidak ditemukan. <button onClick={() => setScreen('subjectDashboard')} className="text-cyan-500 underline">Kembali</button></div>;
-    const { topic, ringkasan, materi_lengkap, latihan_soal, video } = learningData;
+    const { topic, ringkasan, materi_lengkap, latihan_soal } = learningData;
     return (
         <AnimatedScreen customKey="lesson">
             <BackButton onClick={() => setScreen('subjectDashboard')} />
             <div className="space-y-8 pt-8">
                 <h1 className="text-3xl sm:text-5xl font-bold text-center text-cyan-600 dark:text-cyan-400">{topic}</h1>
-                {video ? (
-                    <InfoCard icon={<Youtube />} title={video.title}>
-                        <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden shadow-lg">
-                            <iframe src={video.embedUrl} title={video.title} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen className="w-full h-full"></iframe>
-                        </div>
-                    </InfoCard>
-                ) : (
-                    <InfoCard icon={<Youtube />} title="Video Pembelajaran"><p className="text-center text-slate-400 p-4">Guru AI tidak menemukan video pembelajaran yang relevan di YouTube untuk topik ini.</p></InfoCard>
-                )}
                 {ringkasan && <InfoCard icon={<Lightbulb />} title="Ringkasan"><p className="leading-relaxed">{ringkasan}</p></InfoCard>}
                 {materi_lengkap && <InfoCard icon={<BookOpen />} title="Materi Lengkap"><div className="prose dark:prose-invert max-w-none"><ReactMarkdown>{materi_lengkap}</ReactMarkdown></div></InfoCard>}
                 {latihan_soal?.length > 0 && <InfoCard icon={<BookMarked />} title="Latihan Soal"><QuizPlayer questions={latihan_soal} /></InfoCard>}
+                <div className="text-center pt-8">
+                    <button onClick={() => handleMarkAsComplete(topic)} className="px-8 py-4 bg-green-500 text-white font-bold rounded-full shadow-lg hover:bg-green-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-3 group mx-auto">
+                        <CheckCircle size={24} />
+                        Tandai Selesai Belajar
+                    </button>
+                </div>
             </div>
         </AnimatedScreen>
     );
 };
 const Footer = ({ isLanding = false }) => (
     <footer className={`w-full text-center p-6 text-slate-500 dark:text-slate-400 text-sm ${isLanding ? 'relative z-10 mt-16' : 'mt-auto'}`}>
-        <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Sebuah Karya dari</p>
-        <p className="text-lg font-bold text-slate-900 dark:text-white">M. Irham Andika Putra & Bgune Digital</p>
-        <div className="flex justify-center gap-4 mt-3">
-            <a href="https://www.youtube.com/@PernahMikir" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-500 transition-colors"><Youtube/></a>
-            <a href="https://github.com/irhamp" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-500 transition-colors"><Github/></a>
-            <a href="https://www.instagram.com/irham_putra07" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-500 transition-colors"><Instagram/></a>
-        </div>
+        <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Sebuah Karya dari</p><p className="text-lg font-bold text-slate-900 dark:text-white">M. Irham Andika Putra & Bgune Digital</p>
+        <div className="flex justify-center gap-4 mt-3"><a href="https://www.youtube.com/@PernahMikir" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-500 transition-colors"><Youtube/></a><a href="https://github.com/irhamp" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-500 transition-colors"><Github/></a><a href="https://www.instagram.com/irham_putra07" target="_blank" rel="noopener noreferrer" className="hover:text-cyan-500 transition-colors"><Instagram/></a></div>
         <p className="mt-4 text-xs">Dibuat dengan <Sparkles className="inline h-3 w-3 text-amber-400"/> dan Teknologi AI dari Google</p>
     </footer>
 );
@@ -1196,7 +1249,15 @@ const ScreenContainer = () => { const { screen } = useContext(AppContext); const
 const BackButton = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-2 text-cyan-500 font-semibold hover:underline mb-8"><ArrowLeft size={20} /> Kembali</button>;
 const ErrorMessage = ({ message }) => <div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-r-lg mt-4 w-full flex items-center gap-4"><AlertTriangle className="h-6 w-6 text-red-500" /><p className="font-bold">{message}</p></div>;
 const iconMap = { School, Brain, BookOpen, Youtube, Lightbulb, FileText, ArrowLeft, Loader, Sparkles, AlertTriangle, X, FlaskConical, Globe, Calculator, Dna, BarChart2, Drama, Computer, BookHeart, Landmark, Languages, HelpCircle, Atom, CheckCircle, ChevronRight, BrainCircuit, History, BookMarked, Github, Instagram };
-const curriculum = { 'SD': { subjects: [{ name: 'Matematika', iconName: 'Calculator' }, { name: 'IPAS', iconName: 'Globe' }, { name: 'Pendidikan Pancasila', iconName: 'Landmark' }, { name: 'Bahasa Indonesia', iconName: 'BookHeart' }] }, 'SMP': { subjects: [{ name: 'Matematika', iconName: 'Calculator' }, { name: 'IPA Terpadu', iconName: 'FlaskConical' }, { name: 'IPS Terpadu', iconName: 'Globe' }, { name: 'Pendidikan Pancasila', iconName: 'Landmark'}, { name: 'Bahasa Indonesia', iconName: 'BookHeart' }, { name: 'Bahasa Inggris', iconName: 'Languages' }, { name: 'Informatika', iconName: 'Computer' }] }, 'SMA': { tracks: { 'IPA': [{ name: 'Matematika Peminatan', iconName: 'Calculator' }, { name: 'Fisika', iconName: 'Atom' }, { name: 'Kimia', iconName: 'FlaskConical' }, { name: 'Biologi', iconName: 'Dna' }], 'IPS': [{ name: 'Ekonomi', iconName: 'BarChart2' }, { name: 'Geografi', iconName: 'Globe' }, { name: 'Sosiologi', iconName: 'School' }], 'Bahasa': [{ name: 'Sastra Indonesia', iconName: 'BookHeart' }, { name: 'Sastra Inggris', iconName: 'Drama' }, { name: 'Antropologi', iconName: 'Globe' }, { name: 'Bahasa Asing', iconName: 'Languages' }] } } };
+const curriculum = { 
+    'SD': { subjects: [{ name: 'Matematika', iconName: 'Calculator' }, { name: 'IPAS', iconName: 'Globe' }, { name: 'Pendidikan Pancasila', iconName: 'Landmark' }, { name: 'Bahasa Indonesia', iconName: 'BookHeart' }, { name: 'Sejarah', iconName: 'History' }] }, 
+    'SMP': { subjects: [{ name: 'Matematika', iconName: 'Calculator' }, { name: 'IPA Terpadu', iconName: 'FlaskConical' }, { name: 'IPS Terpadu', iconName: 'Globe' }, { name: 'Pendidikan Pancasila', iconName: 'Landmark'}, { name: 'Bahasa Indonesia', iconName: 'BookHeart' }, { name: 'Bahasa Inggris', iconName: 'Languages' }, { name: 'Informatika', iconName: 'Computer' }, { name: 'Sejarah', iconName: 'History' }] }, 
+    'SMA': { tracks: { 
+        'IPA': [{ name: 'Matematika Peminatan', iconName: 'Calculator' }, { name: 'Fisika', iconName: 'Atom' }, { name: 'Kimia', iconName: 'FlaskConical' }, { name: 'Biologi', iconName: 'Dna' }, { name: 'Sejarah Indonesia', iconName: 'History' }], 
+        'IPS': [{ name: 'Ekonomi', iconName: 'BarChart2' }, { name: 'Geografi', iconName: 'Globe' }, { name: 'Sosiologi', iconName: 'School' }, { name: 'Sejarah Peminatan', iconName: 'History' }], 
+        'Bahasa': [{ name: 'Sastra Indonesia', iconName: 'BookHeart' }, { name: 'Sastra Inggris', iconName: 'Drama' }, { name: 'Antropologi', iconName: 'Globe' }, { name: 'Bahasa Asing', iconName: 'Languages' }, { name: 'Sejarah', iconName: 'History' }] 
+    } } 
+};
 const LevelSelectionScreen = () => { const { setScreen, setLevel, setPage } = useContext(AppContext); return ( <AnimatedScreen customKey="level"> <div className="text-center pt-8"> <BackButton onClick={() => setPage('dashboard')} /> <School className="w-24 h-24 mx-auto text-cyan-500" /> <h1 className="text-4xl font-bold mt-4">Pilih Jenjang Pendidikan</h1> <p className="text-xl text-slate-500 dark:text-slate-400 mt-2 mb-12">Mulai dari sini untuk petualangan belajarmu.</p> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto"> {Object.keys(curriculum).map((lvl) => <button key={lvl} onClick={() => { setLevel(lvl); setScreen(lvl === 'SMA' ? 'trackSelection' : 'subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold flex flex-col items-center justify-center gap-4 cursor-pointer">{lvl}</button>)} </div> </div> </AnimatedScreen> ); };
 const TrackSelectionScreen = () => { const { setScreen, setTrack } = useContext(AppContext); return ( <AnimatedScreen customKey="track"> <BackButton onClick={() => setScreen('levelSelection')} /> <div className="text-center pt-8"> <h1 className="text-4xl font-bold mb-12">Pilih Jurusan</h1> <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-2xl mx-auto"> {Object.keys(curriculum.SMA.tracks).map((trackName) => <button key={trackName} onClick={() => { setTrack(trackName); setScreen('subjectSelection'); }} className="p-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-md hover:shadow-cyan-500/20 hover:border-cyan-500 hover:-translate-y-2 transition-all text-2xl font-bold">{trackName}</button>)} </div> </div> </AnimatedScreen> ); };
 const SubjectSelectionScreen = () => { const { level, track, setScreen, setSubject } = useContext(AppContext); const subjects = level === 'SMA' ? curriculum.SMA.tracks[track] : curriculum[level]?.subjects; const backScreen = level === 'SMA' ? 'trackSelection' : 'levelSelection'; if (!subjects) return <div className="text-center"><p>Gagal memuat mata pelajaran.</p><BackButton onClick={() => setScreen(backScreen)} /></div>; return ( <AnimatedScreen customKey="subject"> <BackButton onClick={() => setScreen(backScreen)} /> <div className="pt-8"> <h1 className="text-4xl font-bold mb-12 text-center">Pilih Mata Pelajaran</h1> <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 max-w-5xl mx-auto"> {subjects.map((s) => <button key={s.name} onClick={() => { setSubject(s); setScreen('subjectDashboard'); }} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-center hover:border-cyan-500 hover:-translate-y-1 transition-all aspect-square shadow-md"><DynamicIcon name={s.iconName} size={48} className="text-cyan-500" /><span className="font-semibold text-sm text-center mt-3">{s.name}</span></button>)} </div> </div> </AnimatedScreen> ); };
@@ -1221,11 +1282,9 @@ styleSheet.innerText = `
     }
     body, .font-sans { font-family: var(--font-family-default); }
     .dyslexia-friendly { font-family: var(--font-family-dyslexia); letter-spacing: 0.5px; }
-
     .font-size-sm { font-size: 0.9rem; }
     .font-size-base { font-size: 1rem; }
     .font-size-lg { font-size: 1.1rem; }
-
     .focus-mode .non-essential { display: none !important; }
 
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -1233,13 +1292,11 @@ styleSheet.innerText = `
     .animate-fadeIn { animation: fadeIn 0.4s ease-in-out; }
     .animate-fadeInUp { animation: fadeInUp 0.4s ease-out forwards; }
     
-    .no-animations * { transition: none !important; animation: none !important; }
-
     .aspect-w-16 { position: relative; padding-bottom: 56.25%; }
     .aspect-h-9 { height: 0; }
     .aspect-w-16 > iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
 
-    .prose { --tw-prose-body: #334155; --tw-prose-headings: #1e293b; --tw-prose-lead: #475569; --tw-prose-links: #0891b2; --tw-prose-bold: #1e293b; --tw-prose-counters: #64748b; --tw-prose-bullets: #94a3b8; --tw-prose-hr: #e2e8f0; --tw-prose-quotes: #1e293b; --tw-prose-quote-borders: #e2e8f0; --tw-prose-captions: #64748b; --tw-prose-code: #1e293b; --tw-prose-pre-code: #e2e8f0; --tw-prose-pre-bg: #1e293b; --tw-prose-th-borders: #d1d5db; --tw-prose-td-borders: #e5e7eb; --tw-prose-invert-body: #d1d5db; --tw-prose-invert-headings: #fff; --tw-prose-invert-lead: #9ca3af; --tw-prose-invert-links: #67e8f9; --tw-prose-invert-bold: #fff; --tw-prose-invert-counters: #9ca3af; --tw-prose-invert-bullets: #4b5563; --tw-prose-invert-hr: #374151; --tw-prose-invert-quotes: #f3f4f6; --tw-prose-invert-quote-borders: #374151; --tw-prose-invert-captions: #9ca3af; --tw-prose-invert-code: #fff; --tw-prose-invert-pre-code: #d1d5db; --tw-prose-invert-pre-bg: rgb(0 0 0 / 50%); }
+    .prose { --tw-prose-body: #334155; --tw-prose-headings: #1e293b; --tw-prose-lead: #475569; --tw-prose-links: #0891b2; --tw-prose-bold: #1e293b; --tw-prose-counters: #64748b; --tw-prose-bullets: #94a3b8; --tw-prose-hr: #e2e8f0; --tw-prose-quotes: #1e293b; --tw-prose-quote-borders: #e2e8f0; --tw-prose-captions: #64748b; --tw-prose-code: #1e293b; --tw-prose-pre-code: #e2e8f0; --tw-prose-pre-bg: #1e293b; --tw-prose-invert-body: #d1d5db; --tw-prose-invert-headings: #fff; --tw-prose-invert-lead: #9ca3af; --tw-prose-invert-links: #67e8f9; --tw-prose-invert-bold: #fff; --tw-prose-invert-counters: #9ca3af; --tw-prose-invert-bullets: #4b5563; --tw-prose-invert-hr: #374151; --tw-prose-invert-quotes: #f3f4f6; --tw-prose-invert-quote-borders: #374151; --tw-prose-invert-captions: #9ca3af; --tw-prose-invert-code: #fff; --tw-prose-invert-pre-code: #d1d5db; --tw-prose-invert-pre-bg: rgb(0 0 0 / 50%); }
     .prose :where(a):not(:where([class~="not-prose"] *)) { text-decoration: none; font-weight: 600; }
     .prose :where(a):not(:where([class~="not-prose"] *)):hover { text-decoration: underline; }
     .prose :where(h2):not(:where([class~="not-prose"] *)) { margin-top: 1.5em; margin-bottom: 0.8em; }
@@ -1248,7 +1305,7 @@ styleSheet.innerText = `
     .prose :where(ol):not(:where([class~="not-prose"] *)) { padding-left: 1.2em; }
     .prose :where(code):not(:where([class~="not-prose"] *)) { background-color: #e2e8f0; padding: 0.2em 0.4em; border-radius: 0.25rem; font-weight: 600; font-size: 85% !important; }
     .dark .prose :where(code):not(:where([class~="not-prose"] *)) { background-color: #334155; }
+    .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
     .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 `;
 document.head.appendChild(styleSheet);
-
