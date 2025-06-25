@@ -361,14 +361,14 @@ const DevProvider = ({ children }) => {
     };
 
     const deleteVideo = async (fbId) => {
-        try {
-            await deleteDoc(doc(db, "dev_youtube_videos", fbId));
-            addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
-        } && error => {
-            addLog(`Failed to delete video: ${error.message}`, "ERROR");
-            console.error(error);
-        }
-    };
+    try {
+        await deleteDoc(doc(db, "dev_youtube_videos", fbId));
+        addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
+    } catch (error) {  // <-- Perbaikan di sini
+        addLog(`Failed to delete video: ${error.message}`, "ERROR");
+        console.error(error);
+    }
+};
 
     const toggleVideoStatus = async (fbId, currentStatus) => {
         try {
