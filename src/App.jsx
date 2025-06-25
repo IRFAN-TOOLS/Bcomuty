@@ -2,8 +2,7 @@ import React, { useState, useEffect, createContext, useContext, useCallback, use
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
-    getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, getDocs, 
-    writeBatch, serverTimestamp, setDoc, query, increment
+    getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, getDocs, writeBatch, serverTimestamp, setDoc, query
 } from 'firebase/firestore';
 import { 
     Search, Brain, BookOpen, Youtube, Lightbulb, FileText, ArrowLeft, Loader, Sparkles, 
@@ -24,7 +23,7 @@ const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik";
 const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
 
 const firebaseConfig = {
-    apiKey: "MASUKKAN_API_KEY_FIREBASE_ANDA",
+    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // GANTI DENGAN API KEY ANDA
     authDomain: "bgune---community.firebaseapp.com",
     projectId: "bgune---community",
     storageBucket: "bgune---community.appspot.com",
@@ -196,8 +195,7 @@ const SettingsProvider = ({ children }) => {
     const [dataSaverMode, setDataSaverMode] = useLocalStorage('bdukasi-data-saver-v3', false);
     const [dyslexiaFont, setDyslexiaFont] = useLocalStorage('bdukasi-dyslexia-v3', false);
 
-    const devContext = useContext(DevContext);
-    const featureFlags = devContext ? devContext.featureFlags : {};
+    const { featureFlags } = useContext(DevContext) || {};
 
     const activeTheme = useMemo(() => {
         if (theme === 'system') {
@@ -236,9 +234,7 @@ const SettingsProvider = ({ children }) => {
         root.classList.add(`font-size-${fontSize}`);
 
         root.classList.toggle('dyslexia-friendly', dyslexiaFont);
-        if (featureFlags) {
-            root.classList.toggle('focus-mode', featureFlags.focusMode);
-        }
+        root.classList.toggle('focus-mode', featureFlags?.focusMode);
     }, [fontSize, dyslexiaFont, featureFlags]);
 
     const value = { theme, setTheme, activeTheme, fontSize, setFontSize, language, setLanguage, dataSaverMode, setDataSaverMode, dyslexiaFont, setDyslexiaFont };
@@ -247,7 +243,7 @@ const SettingsProvider = ({ children }) => {
 
 const DevProvider = ({ children }) => {
     const [videos, setVideos] = useState([]);
-    const [stats, setStats] = useState({ users: 0, materials: 0, questions: 0, totalMaterialsCompleted: 0 });
+    const [stats, setStats] = useState({ users: 0, materials: 0, questions: 0, lastActivity: 'N/A', totalStudyTime: 0 });
     const [logs, setLogs] = useState([`[${new Date().toLocaleTimeString()}] [SYSTEM] Developer console initialized.`]);
     const [featureFlags, setFeatureFlags] = useState({ 
         focusMode: false, 
@@ -258,10 +254,10 @@ const DevProvider = ({ children }) => {
     });
     const [loading, setLoading] = useState(true);
 
-    const addLog = useCallback((message, type = 'INFO') => {
+    const addLog = (message, type = 'INFO') => {
         const timestamp = new Date().toLocaleTimeString();
         setLogs(prev => [`[${timestamp}] [${type}] ${message}`, ...prev].slice(-100));
-    }, []);
+    };
 
     useEffect(() => {
         setLoading(true);
@@ -271,7 +267,7 @@ const DevProvider = ({ children }) => {
             onSnapshot(collection(db, "dev_youtube_videos"), (snapshot) => {
                 const fetchedVideos = snapshot.docs.map(doc => ({ fbId: doc.id, ...doc.data() }));
                 setVideos(fetchedVideos);
-                addLog(`Fetched ${fetchedVideos.length} recommendation videos.`, "DB");
+                addLog(`Fetched ${fetchedVideos.length} videos.`, "DB");
             }, error => addLog(`Video fetch failed: ${error.message}`, "ERROR")),
 
             onSnapshot(doc(db, "dev_stats", "main"), (doc) => {
@@ -279,8 +275,7 @@ const DevProvider = ({ children }) => {
                     setStats(s => ({ ...s, ...doc.data() }));
                     addLog("Live stats updated.", "DB");
                 } else {
-                     addLog("Stats document not found. Creating one...", "DB-WARN");
-                     setDoc(doc(db, "dev_stats", "main"), { totalMaterialsCompleted: 0, users: 0 });
+                     addLog("Stats document not found.", "DB-WARN");
                 }
             }, error => addLog(`Stats fetch failed: ${error.message}`, "ERROR")),
 
@@ -290,12 +285,14 @@ const DevProvider = ({ children }) => {
                     addLog("Feature flags loaded.", "DB");
                 } else {
                     addLog("Feature flags document not found. Using defaults.", "DB-WARN");
+                    // Create if not exists
                     setDoc(doc(db, "dev_feature_flags", "main"), featureFlags);
                 }
             }, error => addLog(`Flags fetch failed: ${error.message}`, "ERROR")),
 
             onSnapshot(collection(db, "users"), (snapshot) => {
                 setStats(prev => ({...prev, users: snapshot.size}));
+                addLog(`User count updated to ${snapshot.size}.`, "DB");
             }, error => addLog(`User count fetch failed: ${error.message}`, "ERROR"))
         ];
 
@@ -305,7 +302,7 @@ const DevProvider = ({ children }) => {
             unsubscribers.forEach(unsub => unsub());
             addLog("Developer Context cleaned up.", "SYSTEM");
         };
-    }, [addLog]);
+    }, []);
 
     const addVideo = async (url) => {
         try {
@@ -365,10 +362,6 @@ const DevProvider = ({ children }) => {
 
 const AppProvider = ({ children }) => {
     const { user } = useContext(AuthContext);
-    // FIX: Moved useContext call to the top of the component to fix initialization error.
-    const settings = useContext(SettingsContext);
-    const dataSaverMode = settings ? settings.dataSaverMode : false;
-    
     const [page, setPage] = useState('dashboard');
     const [screen, setScreen] = useState('levelSelection');
     const [level, setLevel] = useState('');
@@ -383,7 +376,6 @@ const AppProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [toast, setToast] = useState({ show: false, message: '' });
-    const [learningVideos, setLearningVideos] = useState([]);
 
     const showToast = (message) => {
         setToast({ show: true, message });
@@ -402,46 +394,15 @@ const AppProvider = ({ children }) => {
                 completedAt: serverTimestamp(),
                 subjectName: subject?.name || 'Unknown',
             });
-            
-            const statsRef = doc(db, "dev_stats", "main");
-            await updateDoc(statsRef, { totalMaterialsCompleted: increment(1) });
-            
-            showToast("Kerja bagus! Materi telah ditandai selesai.");
-            setPage('dashboard');
+            showToast("Kerja bagus, kamu luar biasa! Materi ditandai selesai.");
         } catch (err) {
             console.error("Gagal menandai selesai:", err);
             showToast("Gagal menyimpan progres, coba lagi nanti.");
         }
     };
 
-    const fetchLearningVideos = useCallback(async (searchTopic, subjectName) => {
-        if (dataSaverMode) {
-            setLearningVideos([]);
-            return;
-        }
-        try {
-            const query = encodeURIComponent(`${searchTopic} ${subjectName} video pembelajaran full materi`);
-            const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&maxResults=3&type=video&videoDuration=long&relevanceLanguage=id&key=${YOUTUBE_API_KEY}`;
-            const response = await fetch(API_URL);
-            if (!response.ok) throw new Error('Gagal menghubungi YouTube API');
-            const data = await response.json();
-            if (data.items) {
-                setLearningVideos(data.items);
-            }
-        } catch (err) {
-            console.error("Gagal mencari video YouTube:", err);
-            setLearningVideos([]);
-        }
-    }, [dataSaverMode]);
-    
     const fetchLearningMaterial = useCallback(async (searchTopic, isFromHistory = false) => {
-        setIsLoading(true); 
-        setLoadingMessage('Guru AI sedang menyiapkan materimu...'); 
-        setError(null); 
-        setLearningData(null); 
-        setLearningVideos([]);
-        setPage('belajar'); 
-        setScreen('lesson');
+        setIsLoading(true); setLoadingMessage('Guru AI sedang menyiapkan materimu...'); setError(null); setLearningData(null); setPage('belajar'); setScreen('lesson');
 
         const { level, track, subject } = contextValue;
         if (!isFromHistory) addHistory({ topic: searchTopic, level, track, subjectName: subject.name });
@@ -451,14 +412,13 @@ const AppProvider = ({ children }) => {
         try {
             const geminiData = await callGeminiAPI(geminiPrompt);
             setLearningData({ topic: searchTopic, ...geminiData });
-            await fetchLearningVideos(searchTopic, subject.name);
         } catch (err) {
             setError(`Gagal memuat materi: ${err.message}.`);
             setPage('dashboard');
         } finally {
             setIsLoading(false);
         }
-    }, [contextValue, addHistory, fetchLearningVideos]);
+    }, [contextValue, addHistory]);
 
     const fetchBankSoal = useCallback(async (topic, count) => {
         if (!topic || !contextValue.level || !contextValue.subject || !count) { setError("Harap masukkan topik dan jumlah soal."); return; }
@@ -488,8 +448,7 @@ const AppProvider = ({ children }) => {
         isLoading, setIsLoading, error, setError, history, addHistory, 
         loadingMessage, setLoadingMessage, isSidebarOpen, setSidebarOpen, contextValue,
         fetchLearningMaterial, fetchBankSoal, fetchRecommendations,
-        handleMarkAsComplete, toast, showToast,
-        learningVideos
+        handleMarkAsComplete, toast, showToast
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -499,7 +458,7 @@ const AppProvider = ({ children }) => {
 // --- FUNGSI API HELPER ---
 const callGeminiAPI = async (prompt, chatHistory = []) => {
     console.log("[API Call] Memanggil Gemini API...");
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("MASUKKAN_API_KEY")) throw new Error("Kunci API Gemini belum diatur.");
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "MASUKKAN_API_KEY_GEMINI_ANDA") throw new Error("Kunci API Gemini belum diatur.");
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const contents = chatHistory.length > 0 ? [...chatHistory, { role: "user", parts: [{ text: prompt }] }] : [{ role: "user", parts: [{ text: prompt }] }];
     const payload = { contents, generationConfig: { response_mime_type: "application/json" } };
@@ -512,6 +471,10 @@ const callGeminiAPI = async (prompt, chatHistory = []) => {
         const cleanedText = text.replace(/^```(json)?\s*|```$/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (error) {
+        if (error instanceof SyntaxError) {
+             const result = await (await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
+             return result.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, terjadi kesalahan dalam memproses jawaban.";
+        }
         console.error("[API Exception] Terjadi kesalahan Gemini:", error);
         throw error;
     }
@@ -715,7 +678,7 @@ const DashboardPage = () => {
                         description="Segera hadir!" 
                         onClick={() => {}} 
                         className="bg-white dark:bg-slate-800"
-                        disabled={true}
+                        disabled={true} // !featureFlags?.dailyMissions
                     />
                 </div>
 
@@ -795,7 +758,7 @@ const SettingsPage = () => {
                     <div className="space-y-6">
                         <SettingOptionGroup label="Tema Aplikasi" options={themeOptions} selected={theme} onChange={setTheme} isIconGroup={true} />
                         <SettingToggle label="Font Disleksia" icon={<Text/>} isEnabled={dyslexiaFont} onToggle={() => setDyslexiaFont(p => !p)} />
-                        <SettingToggle label="Hemat Kuota" icon={<WifiOff />} isEnabled={dataSaverMode} onToggle={() => setDataSaverMode(p => !p)} hint="Mematikan pemuatan video pembelajaran otomatis."/>
+                        <SettingToggle label="Hemat Kuota" icon={<WifiOff />} isEnabled={dataSaverMode} onToggle={() => setDataSaverMode(p => !p)} hint="Mematikan pemuatan aset berkualitas tinggi."/>
                         <SettingOptionGroup label="Ukuran Font" options={fontOptions} selected={fontSize} onChange={setFontSize} />
                         <SettingOptionGroup label="Bahasa" options={langOptions} selected={language} onChange={setLanguage} icon={<TranslateIcon />}/>
                     </div>
@@ -808,7 +771,7 @@ const SettingsPage = () => {
 const DeveloperDashboardPage = () => {
     const { user, isDeveloper } = useContext(AuthContext);
     const { 
-        stats, videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, logs, addLog, featureFlags, toggleFeatureFlag
+        stats, videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, logs, addLog, featureFlags, toggleFeatureFlag, loading 
     } = useContext(DevContext);
     const [newVideoUrl, setNewVideoUrl] = useState('');
     const [videoLoading, setVideoLoading] = useState(false);
@@ -819,6 +782,11 @@ const DeveloperDashboardPage = () => {
         return logs.filter(log => log.includes(`[${logFilter}]`));
     }, [logs, logFilter]);
 
+    useEffect(() => {
+        addLog("Data Error Render Test: Cannot read properties of null (reading 'map')", "ERROR");
+        addLog("Authentication failed for user 'test@example.com'", "AUTH");
+        addLog("API Request to /youtube/v3/videos timed out", "API");
+    }, [addLog]);
 
     if (!isDeveloper) {
         return (
@@ -827,12 +795,10 @@ const DeveloperDashboardPage = () => {
             </AnimatedScreen>
         );
     }
-    
+
     const handleAddVideo = async (e) => { 
         e.preventDefault(); 
-        if(!newVideoUrl.trim()) return;
         setVideoLoading(true);
-        addLog(`Submitting new video URL: ${newVideoUrl}`, 'SYSTEM');
         await addVideo(newVideoUrl); 
         setNewVideoUrl('');
         setVideoLoading(false);
@@ -854,22 +820,19 @@ const DeveloperDashboardPage = () => {
         { key: 'aiAvatar', label: "Avatar AI" },
     ];
 
-    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH', 'DB-WARN'];
-    
-    const devStats = [
-        { icon: <Users2 />, label: "Total Pengguna", value: stats.users || 0 },
-        { icon: <BookCheck />, label: "Total Materi Selesai", value: stats.totalMaterialsCompleted || 0 },
-        { icon: <TrendingUp />, label: "Pengguna Aktif (24h)", value: "N/A" },
-        { icon: <Server />, label: "Performa Server", value: "Healthy" },
-    ];
+    const logCategories = ['ALL', 'SYSTEM', 'DB', 'CONFIG', 'API', 'SUCCESS', 'ERROR', 'AUTH'];
 
     return (
         <AnimatedScreen customKey="dev-dashboard">
             <h1 className="text-3xl font-bold mb-2 flex items-center gap-3"><Server /> Developer Dashboard</h1>
             <p className="text-lg text-slate-500 dark:text-slate-400 mb-8">Mode Super Admin untuk {user?.displayName}.</p>
 
-            <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
-                {devStats.map(stat => <StatCard key={stat.label} icon={stat.icon} label={stat.label} value={stat.value} />)}
+            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
+                <StatCard icon={<Users2 />} label="Total Pengguna" value={stats.users} />
+                <StatCard icon={<BookOpen />} label="Materi Aktif" value={stats.materials || 0} />
+                <StatCard icon={<HelpCircle />} label="Total Soal" value={stats.questions || 0} />
+                <StatCard icon={<Users />} label="Pengguna Teraktif" value={"(coming soon)"} />
+                <StatCard icon={<TrendingUp />} label="Materi Populer" value={"(coming soon)"} />
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -912,7 +875,7 @@ const DeveloperDashboardPage = () => {
                             </select>
                         </div>
                         <div className="bg-black text-white font-mono text-xs p-4 rounded-lg h-[400px] flex-grow overflow-y-auto">
-                            {filteredLogs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[CONFIG]') ? 'text-cyan-400' : log.includes('[DB-WARN]') ? 'text-amber-400' : 'text-slate-300'}`}>{log}</p>)}
+                            {filteredLogs.map((log, i) => <p key={i} className={`whitespace-pre-wrap ${log.includes('[ERROR]') || log.includes('[AUTH]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : log.includes('[CONFIG]') ? 'text-cyan-400' : 'text-slate-300'}`}>{log}</p>)}
                         </div>
                     </InfoCard>
                 </div>
@@ -1024,21 +987,18 @@ const ChatAiPage = () => {
 
 const UpdateLogPage = () => {
     const updates = [
-         { version: "v3.2.1", date: "26 Juni 2025 (Perbaikan Bug)", changes: [
-            "FIX: Mengatasi `ReferenceError` yang terjadi saat inisialisasi aplikasi.",
-         ]},
-         { version: "v3.2.0", date: "26 Juni 2025 (Perbaikan)", changes: [
-            "FIX: Data papan peringkat kini dihitung live dan snapshotnya disimpan ke database untuk persistensi.",
-            "FIX: Menambahkan video pembelajaran relevan dari YouTube saat membuka materi pelajaran.",
-            "FIX: Tombol 'Selesai Belajar' kini menyimpan progres, memberi notifikasi, dan mengarahkan ke dashboard.",
-            "FIX: Dashboard developer menampilkan statistik yang lebih akurat (Total Pengguna & Materi Selesai) dan terminal yang fungsional.",
-            "FIX: Alur rekomendasi video dikonfirmasi berjalan sesuai desain (upload developer -> random di user).",
-        ]},
-        { version: "v3.1.0", date: "26 Juni 2025", changes: [
+         { version: "v3.1.0", date: "26 Juni 2025", changes: [
             "Penambahan Fitur 'Papan Peringkat': Lihat peringkat berdasarkan materi yang diselesaikan.",
             "Penyempurnaan Dashboard Developer: Statistik lebih detail, filter log interaktif, dan kontrol fitur yang diperluas.",
             "Penyempurnaan Dashboard Pelajar: Menampilkan statistik pribadi (materi selesai) dan kutipan motivasi acak.",
+            "Penambahan Tombol 'Selesai Belajar': Progres belajar kini tersimpan di database.",
             "Penambahan Mapel 'Sejarah' di semua jenjang.",
+            "Peningkatan Video Embed: Video rekomendasi kini bisa diputar langsung di dashboard."
+        ]},
+        { version: "v3.0.0", date: "25 Juni 2025", changes: [
+            "Penambahan Halaman 'Tanya Segalanya': Chat interaktif dengan Kak Spenta AI.",
+            "Implementasi Developer Dashboard Awal: Statistik, pengelolaan video, dan kontrol fitur via Firestore.",
+            "Integrasi PWA: Prompt instalasi aplikasi."
         ]},
     ];
 
@@ -1078,17 +1038,6 @@ const LeaderboardPage = () => {
 
                 const usersWithScores = await Promise.all(userPromises);
                 usersWithScores.sort((a, b) => b.score - a.score);
-                
-                try {
-                    const leaderboardRef = doc(db, "leaderboard_cache", "main");
-                    await setDoc(leaderboardRef, {
-                        data: usersWithScores.slice(0, 100), // Simpan top 100
-                        lastUpdated: serverTimestamp()
-                    });
-                } catch (dbError) {
-                    console.error("Gagal menyimpan snapshot papan peringkat:", dbError);
-                }
-
                 setLeaderboardData(usersWithScores);
             } catch (error) {
                 console.error("Failed to fetch leaderboard:", error);
@@ -1132,6 +1081,7 @@ const LeaderboardPage = () => {
 
 
 // --- KOMPONEN UI & PENDUKUNG LAINNYA ---
+
 const ToastNotification = ({ message }) => (
     <div className="fixed bottom-5 right-5 bg-slate-900 dark:bg-white text-white dark:text-black px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fadeInUp z-50">
         <CheckCircle className="text-green-400" />
@@ -1146,6 +1096,7 @@ const Modal = ({ children, onClose }) => (
         </div>
     </div>
 );
+
 
 const LoadingScreen = ({ message }) => (
     <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 z-50 flex flex-col items-center justify-center gap-6">
@@ -1264,55 +1215,23 @@ const Sidebar = () => {
 }
 
 const InfoCard = ({ icon, title, children, className = '' }) => <div className={`bg-white dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/50 rounded-2xl shadow-sm overflow-hidden ${className} animate-fadeInUp`}><div className="p-4 border-b border-slate-200/80 dark:border-slate-700/50 flex items-center gap-3">{icon && <div className="text-cyan-500">{React.cloneElement(icon, { size: 24 })}</div>}<h2 className="text-xl font-bold">{title}</h2></div><div className="p-4 sm:p-6">{children}</div></div>;
-
 const LearningFlow = () => { const { screen } = useContext(AppContext); return <ScreenContainer />; };
-
 const LearningMaterialScreen = () => {
-    const { learningData, setScreen, handleMarkAsComplete, learningVideos } = useContext(AppContext);
-    
+    const { learningData, setScreen, handleMarkAsComplete } = useContext(AppContext);
     if (!learningData) return <div className="text-center p-8">Materi tidak ditemukan. <button onClick={() => setScreen('subjectDashboard')} className="text-cyan-500 underline">Kembali</button></div>;
-    
     const { topic, ringkasan, materi_lengkap, latihan_soal } = learningData;
-
     return (
         <AnimatedScreen customKey="lesson">
             <BackButton onClick={() => setScreen('subjectDashboard')} />
             <div className="space-y-8 pt-8">
                 <h1 className="text-3xl sm:text-5xl font-bold text-center text-cyan-600 dark:text-cyan-400">{topic}</h1>
-                
                 {ringkasan && <InfoCard icon={<Lightbulb />} title="Ringkasan"><p className="leading-relaxed">{ringkasan}</p></InfoCard>}
-                
-                {learningVideos.length > 0 && (
-                    <InfoCard icon={<Youtube />} title="Rekomendasi Video Pembelajaran">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {learningVideos.map(video => (
-                                <div key={video.id.videoId} className="bg-slate-100 dark:bg-slate-800/50 rounded-xl overflow-hidden shadow-sm">
-                                    <div className="aspect-w-16 aspect-h-9 bg-black rounded-t-lg">
-                                        <iframe 
-                                            src={`https://www.youtube.com/embed/${video.id.videoId}`}
-                                            title={video.snippet.title}
-                                            frameBorder="0" 
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                                            allowFullScreen
-                                        ></iframe>
-                                    </div>
-                                    <div className="p-4">
-                                        <h3 className="font-semibold text-sm line-clamp-2 text-slate-800 dark:text-slate-200">{video.snippet.title}</h3>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </InfoCard>
-                )}
-
                 {materi_lengkap && <InfoCard icon={<BookOpen />} title="Materi Lengkap"><div className="prose dark:prose-invert max-w-none"><ReactMarkdown>{materi_lengkap}</ReactMarkdown></div></InfoCard>}
-                
                 {latihan_soal?.length > 0 && <InfoCard icon={<BookMarked />} title="Latihan Soal"><QuizPlayer questions={latihan_soal} /></InfoCard>}
-                
                 <div className="text-center pt-8">
                     <button onClick={() => handleMarkAsComplete(topic)} className="px-8 py-4 bg-green-500 text-white font-bold rounded-full shadow-lg hover:bg-green-600 transform hover:scale-105 transition-all duration-300 flex items-center gap-3 group mx-auto">
                         <CheckCircle size={24} />
-                        Tandai Selesai & Kembali ke Dashboard
+                        Tandai Selesai Belajar
                     </button>
                 </div>
             </div>
