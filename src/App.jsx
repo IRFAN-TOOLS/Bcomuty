@@ -361,14 +361,14 @@ const DevProvider = ({ children }) => {
     };
 
     const deleteVideo = async (fbId) => {
-    try {
-        await deleteDoc(doc(db, "dev_youtube_videos", fbId));
-        addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
-    } catch (error) {  // <-- Perbaikan di sini
-        addLog(`Failed to delete video: ${error.message}`, "ERROR");
-        console.error(error);
-    }
-};
+        try {
+            await deleteDoc(doc(db, "dev_youtube_videos", fbId));
+            addLog(`Video with ID ${fbId} has been deleted.`, "CONFIG");
+        } catch (error) { // Menangkap error yang mungkin terjadi saat deleteDoc
+            addLog(`Failed to delete video: ${error.message}`, "ERROR");
+            console.error(error);
+        }
+    };
 
     const toggleVideoStatus = async (fbId, currentStatus) => {
         try {
@@ -388,7 +388,7 @@ const DevProvider = ({ children }) => {
             addLog(`Failed to update video title: ${error.message}`, "ERROR");
             console.error(error);
         }
-    }
+    };
 
     const toggleFeatureFlag = async (featureKey) => {
         const flagsRef = doc(db, "dev_feature_flags", "main");
@@ -404,7 +404,7 @@ const DevProvider = ({ children }) => {
 
     const value = { videos, addVideo, deleteVideo, toggleVideoStatus, updateVideoTitle, stats, logs, addLog, featureFlags, toggleFeatureFlag, loading };
     return <DevContext.Provider value={value}>{children}</DevContext.Provider>;
-}
+};
 
 const AppProvider = ({ children }) => {
     const { user } = useContext(AuthContext);
@@ -949,7 +949,7 @@ const DeveloperDashboardPage = () => {
             updateVideoTitle(editingVideo.fbId, editingVideo.newTitle);
             setEditingVideo(null);
         }
-    }
+    };
 
     const allFlags = [
         { key: 'videoRecs', label: "Rekomendasi Video" },
