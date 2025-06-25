@@ -1205,13 +1205,21 @@ const LeaderboardPage = () => {
 
                 const usersWithScores = await Promise.all(userPromises);
 // [FIX 2] Sorting di client side setelah fetch
-usersWithScores.sort((a, b) => b.score - a.score);
-setLeaderboardData(usersWithScores);
-} catch (error) {
-    console.error("Failed to fetch leaderboard:", error);
-} finally {
-    setLoading(false);
-}
+useEffect(() => {
+  const fetchLeaderboard = async () => {
+    try {
+      const usersWithScores = await Promise.all(userPromises);
+      usersWithScores.sort((a, b) => b.score - a.score);
+      setLeaderboardData(usersWithScores);
+    } catch (error) {
+      console.error("Failed to fetch leaderboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchLeaderboard();
+}, []);
 
     return (
         <AnimatedScreen key="leaderboard">
