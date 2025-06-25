@@ -1204,19 +1204,14 @@ const LeaderboardPage = () => {
                 });
 
                 const usersWithScores = await Promise.all(userPromises);
-                // [FIX 2] Sorting di client side setelah fetch
-                usersWithScores.sort((a, b) => b.score - a.score);
-                setLeaderboardData(usersWithScores);
-            } catch (error) {
+// [FIX 2] Sorting di client side setelah fetch
+usersWithScores.sort((a, b) => b.score - a.score);
+setLeaderboardData(usersWithScores);
+} catch (error) {
     console.error("Failed to fetch leaderboard:", error);
+} finally {
+    setLoading(false);
 }
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchLeaderboard();
-    }, []);
 
     return (
         <AnimatedScreen key="leaderboard">
