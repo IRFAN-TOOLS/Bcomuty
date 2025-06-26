@@ -19,7 +19,7 @@ import ReactMarkdown from 'react-markdown';
 
 // --- KONFIGURASI PENTING & API KEYS ---
 // CATATAN: Ganti dengan kunci Anda sendiri di environment produksi.
-const GEMINI_API_KEY = "AIzaSyArJ1P8HanSQ_XVWX9m4kUlsIVXrBRInik";
+const GEMINI_API_KEY = "AIzaSyDD1QJC1ogh5BcWrF1LlyDXTSo15bQ8HFM";
 const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
 
 const firebaseConfig = {
