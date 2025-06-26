@@ -23,13 +23,13 @@ const GEMINI_API_KEY = "AIzaSyDD1QJC1ogh5BcWrF1LlyDXTSo15bQ8HFM";
 const YOUTUBE_API_KEY = "AIzaSyD9Rp-oSegoIDr8q9XlKkqpEL64lB2bQVE";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyANQqaFwrsf3xGSDxyn9pcRJqJrIiHrjM0", // GANTI DENGAN API KEY ANDA
-    authDomain: "bgune---community.firebaseapp.com",
-    projectId: "bgune---community",
-    storageBucket: "bgune---community.appspot.com",
-    messagingSenderId: "749511144215",
-    appId: "1:749511144215:web:dcf13c4d59dc705d4f7d52",
-    measurementId: "G-5XRSG2H5SV"
+apiKey: "AIzaSyDz8mZoFdWLZs9zRC2xDndRzKQ7sju-Goc",
+  authDomain: "eduku-web.firebaseapp.com",
+  projectId: "eduku-web",
+  storageBucket: "eduku-web.firebasestorage.com",
+  messagingSenderId: "662463693471",
+  appId: "1:662463693471:web:e0f19e4497aa3f1de498aa",
+  measurementId: "G-G0VWNHHVB8"
 };
 
 // --- DAFTAR AKUN DEVELOPER ---
