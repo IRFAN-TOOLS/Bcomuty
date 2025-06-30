@@ -1,13 +1,446 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#000000" />
-    <title>Eduku</title>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<html lang="id" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warkop Ku - Top Up Game Cepat dan Terpercaya</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* slate-900 */
+            color: #f8fafc; /* slate-50 */
+        }
+        .halo-effect {
+            position: absolute;
+            width: 80px;
+            height: 20px;
+            background-color: #38bdf8; /* sky-400 */
+            border-radius: 50%;
+            filter: blur(20px);
+            opacity: 0.5;
+            top: 50%;
+            left: -15px;
+            transform: translateY(-50%);
+            z-index: -1;
+        }
+        .active-game-btn {
+            background-color: #0284c7 !important; /* sky-600 */
+            color: white !important;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+        }
+        .product-card.selected {
+            border-color: #38bdf8; /* sky-400 */
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+            transform: translateY(-5px);
+        }
+        .form-input {
+            background-color: #1e293b; /* slate-800 */
+            border: 1px solid #334155; /* slate-700 */
+            color: white;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #38bdf8; /* sky-400 */
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+        }
+        .btn-primary {
+            background-color: #0ea5e9; /* sky-500 */
+            color: white;
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .btn-primary:hover {
+            background-color: #0284c7; /* sky-600 */
+            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);
+        }
+        .btn-secondary {
+            background-color: #334155; /* slate-700 */
+            border: 1px solid #475569; /* slate-600 */
+        }
+        .btn-secondary:hover {
+             background-color: #475569; /* slate-600 */
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Header -->
+    <header class="bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50 border-b border-slate-800">
+        <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <a href="#" class="text-2xl font-bold text-white relative">
+                <div class="halo-effect"></div>
+                Warkop Ku
+            </a>
+            <div class="hidden md:flex items-center space-x-8">
+                <a href="#produk" class="text-slate-300 hover:text-white transition">Produk</a>
+                <a href="#cara-order" class="text-slate-300 hover:text-white transition">Cara Order</a>
+                <a href="#kontak" class="text-slate-300 hover:text-white transition">Tentang Kami</a>
+            </div>
+            <a href="https://wa.me/6285751543729" target="_blank" class="btn-primary hidden md:inline-block">
+                Chat Admin
+            </a>
+            <button id="mobile-menu-btn" class="md:hidden text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+            </button>
+        </nav>
+        <!-- Mobile Menu -->
+        <div id="mobile-menu" class="hidden md:hidden px-6 pb-4 flex flex-col space-y-4">
+            <a href="#produk" class="text-slate-300 hover:text-white transition block">Produk</a>
+            <a href="#cara-order" class="text-slate-300 hover:text-white transition block">Cara Order</a>
+            <a href="#kontak" class="text-slate-300 hover:text-white transition block">Tentang Kami</a>
+            <a href="https://wa.me/6285751543729" target="_blank" class="btn-primary mt-2">
+                Chat Admin
+            </a>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section id="beranda" class="relative py-20 md:py-32 overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-b from-slate-900 to-slate-800 opacity-50"></div>
+            <div class="absolute top-0 left-0 w-64 h-64 bg-sky-500/10 rounded-full filter blur-3xl"></div>
+            <div class="absolute bottom-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full filter blur-3xl"></div>
+            <div class="container mx-auto px-6 text-center relative z-10">
+                <h1 class="text-4xl md:text-6xl font-extrabold text-white leading-tight">
+                    Warkop Ku
+                </h1>
+                <p class="mt-4 text-lg md:text-xl text-slate-300 max-w-2xl mx-auto">
+                    Pusat Top Up Game Cepat, Aman, dan Terpercaya. Proses instan, harga bersahabat.
+                </p>
+                <a href="#produk" class="mt-8 inline-block btn-primary text-lg">
+                    Mulai Top Up Sekarang
+                </a>
+            </div>
+        </section>
+
+        <!-- Product Section -->
+        <section id="produk" class="py-20">
+            <div class="container mx-auto px-6">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-white">Pilih Game & Nominal Top Up</h2>
+                    <p class="text-slate-400 mt-2">Pilih game, nominal, masukkan ID, dan selesaikan pesanan via WhatsApp.</p>
+                </div>
+
+                <div class="max-w-4xl mx-auto">
+                    <!-- 1. Pilih Game -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-semibold mb-4 text-sky-400">1. Pilih Game</h3>
+                        <div class="grid grid-cols-3 gap-4">
+                            <button id="btn-ml" class="game-btn flex flex-col items-center justify-center p-4 rounded-lg bg-slate-800 border border-slate-700 transition duration-300 hover:bg-slate-700">
+                                <img src="https://placehold.co/64x64/0f172a/ffffff?text=ML" class="h-12 w-12 rounded-md mb-2 object-cover" alt="Mobile Legends">
+                                <span class="font-semibold">Mobile Legends</span>
+                            </button>
+                            <button id="btn-ff" class="game-btn flex flex-col items-center justify-center p-4 rounded-lg bg-slate-800 border border-slate-700 transition duration-300 hover:bg-slate-700">
+                                <img src="https://placehold.co/64x64/0f172a/ffffff?text=FF" class="h-12 w-12 rounded-md mb-2 object-cover" alt="Free Fire">
+                                <span class="font-semibold">Free Fire</span>
+                            </button>
+                            <button id="btn-roblox" class="game-btn flex flex-col items-center justify-center p-4 rounded-lg bg-slate-800 border border-slate-700 transition duration-300 hover:bg-slate-700">
+                                <img src="https://placehold.co/64x64/0f172a/ffffff?text=RBX" class="h-12 w-12 rounded-md mb-2 object-cover" alt="Roblox">
+                                <span class="font-semibold">Roblox</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 2. Pilih Nominal -->
+                    <div id="product-list-container" class="mb-8 min-h-[200px]">
+                         <h3 class="text-lg font-semibold mb-4 text-sky-400">2. Pilih Nominal</h3>
+                         <div id="product-list" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <!-- Products will be injected here by JS -->
+                            <div class="flex items-center justify-center h-48 bg-slate-800/50 rounded-lg border-2 border-dashed border-slate-700">
+                                <p class="text-slate-500">Pilih game terlebih dahulu</p>
+                            </div>
+                         </div>
+                    </div>
+
+                    <!-- 3. Masukkan Data & Pesan -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4 text-sky-400">3. Lengkapi Data & Pesan</h3>
+                        <div class="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="user-id" class="block mb-2 font-medium text-slate-300">User ID</label>
+                                    <input type="text" id="user-id" class="form-input" placeholder="Masukkan User ID Anda">
+                                </div>
+                                <div id="zone-id-container" class="hidden">
+                                    <label for="zone-id" class="block mb-2 font-medium text-slate-300">Zone ID</label>
+                                    <input type="text" id="zone-id" class="form-input" placeholder="Masukkan Zone ID">
+                                </div>
+                            </div>
+                            <div id="order-summary" class="mt-6 p-4 bg-slate-900 rounded-md text-center border border-slate-700">
+                                <p class="text-slate-400">Ringkasan Pesanan akan muncul di sini.</p>
+                            </div>
+                            <p id="error-message" class="text-red-400 text-sm mt-4 text-center"></p>
+                            <button id="order-btn" class="w-full mt-6 btn-primary text-base">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-2 -mt-1"><path d="M12.518 18.358a2.532 2.532 0 0 1-1.83.642h-4.33a2.464 2.464 0 0 1-2.458-2.385c-.013-1.411.037-2.87.112-4.382.075-1.512.155-3.09.155-3.09s.01-1.452 1.488-1.452h5.53a2.532 2.532 0 0 1 1.83.642l4.33 4.058a2.532 2.532 0 0 1-.002 3.58z"/><path d="m21.64 12.4-4.33-4.058a2.532 2.532 0 0 0-1.83-.642h-5.53c-1.478 0-1.488 1.452-1.488 1.452s-.08 1.58-.155 3.09c-.075 1.512-.125 2.971-.112 4.382a2.464 2.464 0 0 0 2.458 2.385h4.33a2.532 2.532 0 0 0 1.83-.642l4.33-4.058a2.532 2.532 0 0 0 .002-3.58Z"/></svg>
+                                Beli via WhatsApp
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How to Order Section -->
+        <section id="cara-order" class="py-20 bg-slate-900/70">
+            <div class="container mx-auto px-6">
+                 <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-white">Cara Pemesanan</h2>
+                    <p class="text-slate-400 mt-2">Hanya 4 langkah mudah untuk menyelesaikan pesanan Anda.</p>
+                </div>
+                <div class="grid md:grid-cols-4 gap-8 text-center">
+                    <div class="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                        <div class="flex items-center justify-center h-16 w-16 rounded-full bg-sky-500/20 text-sky-400 mx-auto mb-4 text-2xl font-bold">1</div>
+                        <h3 class="font-semibold text-white mb-2">Pilih Game & Nominal</h3>
+                        <p class="text-slate-400 text-sm">Pilih game favoritmu dan nominal top up yang diinginkan.</p>
+                    </div>
+                     <div class="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                        <div class="flex items-center justify-center h-16 w-16 rounded-full bg-sky-500/20 text-sky-400 mx-auto mb-4 text-2xl font-bold">2</div>
+                        <h3 class="font-semibold text-white mb-2">Masukkan User ID</h3>
+                        <p class="text-slate-400 text-sm">Isi data User ID (dan Zone ID jika diperlukan) dengan benar.</p>
+                    </div>
+                     <div class="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                        <div class="flex items-center justify-center h-16 w-16 rounded-full bg-sky-500/20 text-sky-400 mx-auto mb-4 text-2xl font-bold">3</div>
+                        <h3 class="font-semibold text-white mb-2">Pesan via WhatsApp</h3>
+                        <p class="text-slate-400 text-sm">Klik tombol beli untuk diarahkan ke WhatsApp Admin.</p>
+                    </div>
+                     <div class="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                        <div class="flex items-center justify-center h-16 w-16 rounded-full bg-sky-500/20 text-sky-400 mx-auto mb-4 text-2xl font-bold">4</div>
+                        <h3 class="font-semibold text-white mb-2">Lakukan Pembayaran</h3>
+                        <p class="text-slate-400 text-sm">Selesaikan pembayaran sesuai instruksi dari admin kami.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Contact/About Us Section -->
+        <section id="kontak" class="py-20">
+            <div class="container mx-auto px-6 text-center">
+                <h2 class="text-3xl font-bold text-white">Tentang Warkop Ku</h2>
+                 <p class="text-slate-400 mt-4 max-w-2xl mx-auto">
+                    Warkop Ku didirikan untuk menyediakan layanan top up game yang mudah, cepat, dan terpercaya. Kami berkomitmen untuk memberikan harga terbaik dan pelayanan pelanggan yang responsif. Jika Anda memiliki pertanyaan, jangan ragu untuk menghubungi kami.
+                </p>
+                <div class="mt-8">
+                     <a href="https://wa.me/6285751543729?text=Halo%20Admin%20Warkop%20Ku,%20saya%20mau%20bertanya." target="_blank" class="btn-primary text-lg">
+                        Hubungi Kami di +62 857-5154-3729
+                    </a>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 border-t border-slate-800 py-8">
+        <div class="container mx-auto px-6 text-center text-slate-400">
+            <p>&copy; 2025 Warkop Ku. Semua Hak Cipta Dilindungi.</p>
+            <p class="text-sm mt-2">Website ini adalah prototipe untuk tujuan demonstrasi.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- DATA PRODUK ---
+            const products = {
+                ml: {
+                    name: 'Mobile Legends',
+                    requiresZoneId: true,
+                    items: [
+                        { name: '5 Diamonds', price: 10000 },
+                        { name: '28 Diamonds', price: 15000 },
+                        { name: '59 Diamonds', price: 25000 },
+                        { name: '86 Diamonds', price: 30000 },
+                        { name: '172 Diamonds', price: 60000 },
+                        { name: '257 Diamonds', price: 90000 },
+                        { name: '514 Diamonds', price: 180000 },
+                        { name: '706 Diamonds', price: 240000 },
+                    ]
+                },
+                ff: {
+                    name: 'Free Fire',
+                    requiresZoneId: false,
+                    items: [
+                        { name: '5 Diamonds', price: 10000 },
+                        { name: '70 Diamonds', price: 18000 },
+                        { name: '140 Diamonds', price: 35000 },
+                        { name: '355 Diamonds', price: 70000 },
+                        { name: '720 Diamonds', price: 140000 },
+                        { name: '1000 Diamonds', price: 195000 },
+                    ]
+                },
+                roblox: {
+                    name: 'Roblox',
+                    requiresZoneId: false,
+                    items: [
+                        { name: '80 Robux', price: 40000 },
+                        { name: '100 Robux', price: 50000 },
+                        { name: '400 Robux', price: 180000 },
+                        { name: '800 Robux', price: 350000 },
+                        { name: '1700 Robux', price: 700000 },
+                        { name: '2000 Robux', price: 820000 },
+                    ]
+                }
+            };
+
+            // --- STATE APLIKASI ---
+            let currentGame = null;
+            let selectedProduct = null;
+            const WHATSAPP_NUMBER = '6285751543729';
+
+            // --- ELEMEN DOM ---
+            const gameButtons = document.querySelectorAll('.game-btn');
+            const productListDiv = document.getElementById('product-list');
+            const productListContainer = document.getElementById('product-list-container');
+            const zoneIdContainer = document.getElementById('zone-id-container');
+            const userIdInput = document.getElementById('user-id');
+            const zoneIdInput = document.getElementById('zone-id');
+            const orderSummaryDiv = document.getElementById('order-summary');
+            const orderButton = document.getElementById('order-btn');
+            const errorMessageP = document.getElementById('error-message');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const mobileMenu = document.getElementById('mobile-menu');
+
+            // --- FUNGSI ---
+            
+            // Format harga ke Rupiah
+            function formatPrice(price) {
+                return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(price);
+            }
+
+            // Render produk berdasarkan game yang dipilih
+            function renderProducts(gameKey) {
+                productListDiv.innerHTML = ''; // Kosongkan list
+                const gameData = products[gameKey];
+                
+                gameData.items.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'product-card border-2 border-slate-700 bg-slate-800 rounded-lg p-3 text-center cursor-pointer hover:bg-slate-700 transition-all duration-300';
+                    card.innerHTML = `
+                        <div class="font-semibold text-white">${item.name}</div>
+                        <div class="text-sm text-sky-400">${formatPrice(item.price)}</div>
+                    `;
+                    card.addEventListener('click', () => selectProduct(card, item));
+                    productListDiv.appendChild(card);
+                });
+            }
+
+            // Memilih produk
+            function selectProduct(cardElement, product) {
+                // Hapus class 'selected' dari semua card
+                document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
+                // Tambah class 'selected' ke card yang di klik
+                cardElement.classList.add('selected');
+                
+                selectedProduct = product;
+                updateOrderSummary();
+            }
+
+            // Update ringkasan pesanan
+            function updateOrderSummary() {
+                if (currentGame && selectedProduct) {
+                    const gameName = products[currentGame].name;
+                    orderSummaryDiv.innerHTML = `
+                        <p class="font-semibold text-white">${gameName} - ${selectedProduct.name}</p>
+                        <p class="text-lg text-sky-400 font-bold mt-1">${formatPrice(selectedProduct.price)}</p>
+                    `;
+                } else {
+                     orderSummaryDiv.innerHTML = `<p class="text-slate-400">Pilih game dan produk terlebih dahulu.</p>`;
+                }
+            }
+
+            // Membuat dan membuka link WhatsApp
+            function createWhatsAppLink() {
+                errorMessageP.textContent = ''; // Bersihkan pesan error
+                
+                // Validasi
+                if (!currentGame) {
+                    errorMessageP.textContent = 'Silakan pilih game terlebih dahulu.';
+                    return;
+                }
+                if (!selectedProduct) {
+                    errorMessageP.textContent = 'Silakan pilih nominal top up.';
+                    return;
+                }
+                const userId = userIdInput.value.trim();
+                if (!userId) {
+                    errorMessageP.textContent = 'User ID tidak boleh kosong.';
+                    return;
+                }
+                const zoneId = zoneIdInput.value.trim();
+                if (products[currentGame].requiresZoneId && !zoneId) {
+                    errorMessageP.textContent = 'Zone ID tidak boleh kosong untuk game ini.';
+                    return;
+                }
+
+                const gameName = products[currentGame].name;
+                const productName = selectedProduct.name;
+                const price = formatPrice(selectedProduct.price);
+                
+                let userData = `User ID: ${userId}`;
+                if (products[currentGame].requiresZoneId) {
+                    userData += ` (${zoneId})`;
+                }
+
+                const message = `Halo Warkop Ku, saya mau pesan:\n\n*Game:* ${gameName}\n*Produk:* ${productName}\n*Data Akun:* ${userData}\n*Total Bayar:* ${price}\n\nMohon info untuk pembayarannya. Terima kasih!`;
+                
+                const encodedMessage = encodeURIComponent(message);
+                const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodedMessage}`;
+                
+                window.open(whatsappUrl, '_blank');
+            }
+
+
+            // --- EVENT LISTENERS ---
+            gameButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const gameKey = button.id.split('-')[1];
+                    
+                    // Reset
+                    currentGame = gameKey;
+                    selectedProduct = null;
+                    userIdInput.value = '';
+                    zoneIdInput.value = '';
+
+                    // Update UI
+                    gameButtons.forEach(btn => btn.classList.remove('active-game-btn'));
+                    button.classList.add('active-game-btn');
+                    
+                    if (products[gameKey].requiresZoneId) {
+                        zoneIdContainer.classList.remove('hidden');
+                    } else {
+                        zoneIdContainer.classList.add('hidden');
+                    }
+                    
+                    renderProducts(gameKey);
+                    updateOrderSummary();
+                    productListContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            });
+
+            orderButton.addEventListener('click', createWhatsAppLink);
+            
+            mobileMenuBtn.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+            
+            // Tutup menu mobile jika link diklik
+            document.querySelectorAll('#mobile-menu a').forEach(link => {
+                link.addEventListener('click', () => {
+                    mobileMenu.classList.add('hidden');
+                });
+            });
+
+        });
+    </script>
+</body>
 </html>
