@@ -1,297 +1,207 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPLS SMPN 3 MENTOK 2025</title>
-    
-    <!-- Memuat Tailwind CSS untuk styling modern dan responsif -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Memuat Google Fonts untuk tipografi yang lebih baik -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Poppins:wght@600;800&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MPLS SMPN 3 MENTOK 2025</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Poppins:wght@600;800&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet"/>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+    }
+    .font-poppins { font-family: 'Poppins', sans-serif; }
+    .font-roboto-mono { font-family: 'Roboto Mono', monospace; }
 
-    <style>
-        /* Menambahkan font kustom ke Tailwind */
-        body {
-            font-family: 'Inter', sans-serif;
-            overflow: hidden; /* Mencegah scrollbar dari elemen animasi */
-        }
-        .font-poppins {
-            font-family: 'Poppins', sans-serif;
-        }
-        .font-roboto-mono {
-            font-family: 'Roboto Mono', monospace;
-        }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up { animation: fadeInUp 0.8s ease-out forwards; }
 
-        /* Animasi kustom untuk fade-in-up */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.8s ease-out forwards;
-        }
+    @keyframes glow {
+      0%, 100% { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #007bff, 0 0 20px #007bff; }
+      50% { text-shadow: 0 0 10px #fff, 0 0 15px #007bff, 0 0 20px #007bff, 0 0 25px #007bff; }
+    }
+    .text-glow { animation: glow 2s ease-in-out infinite; }
 
-        /* Animasi untuk teks yang bersinar */
-        @keyframes glow {
-            0%, 100% { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #007bff, 0 0 20px #007bff; }
-            50% { text-shadow: 0 0 10px #fff, 0 0 15px #007bff, 0 0 20px #007bff, 0 0 25px #007bff; }
-        }
-        .text-glow {
-            animation: glow 2s ease-in-out infinite;
-        }
-        
-        /* Transisi untuk perubahan background */
-        .background-transition {
-            transition: background 2s ease-in-out;
-        }
-        
-        /* --- Styling untuk Animasi Latar Belakang --- */
-        #background-animations {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 0;
-            overflow: hidden;
-        }
+    .background-transition { transition: background 2s ease-in-out; }
 
-        .shape {
-            position: absolute;
-            display: block;
-            list-style: none;
-            background: rgba(255, 255, 255, 0.15); /* Warna putih semi-transparan */
-            animation: float 25s linear infinite;
-            bottom: -150px; /* Mulai dari bawah layar */
-        }
+    #background-animations {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0; overflow: hidden;
+    }
 
-        .shape.circle { border-radius: 50%; }
-        .shape.triangle { 
-            width: 0;
-            height: 0;
-            border-left: 40px solid transparent;
-            border-right: 40px solid transparent;
-            border-bottom: 80px solid rgba(255, 255, 255, 0.15);
-            background: transparent !important;
-        }
-        .shape.plus {
-             background: transparent !important;
-             font-size: 80px;
-             font-weight: bold;
-             color: rgba(255, 255, 255, 0.15);
-        }
+    .shape {
+      position: absolute; display: block;
+      list-style: none;
+      background: rgba(255, 255, 255, 0.15);
+      animation: float 25s linear infinite;
+      bottom: -150px;
+    }
 
-        /* Variasi ukuran dan posisi awal */
-        .shape:nth-child(1) { left: 25%; width: 80px; height: 80px; animation-delay: 0s; }
-        .shape:nth-child(2) { left: 10%; width: 20px; height: 20px; animation-delay: 2s; animation-duration: 12s; }
-        .shape:nth-child(3) { left: 70%; width: 20px; height: 20px; animation-delay: 4s; }
-        .shape:nth-child(4) { left: 40%; width: 60px; height: 60px; animation-delay: 0s; animation-duration: 18s; }
-        .shape:nth-child(5) { left: 65%; width: 20px; height: 20px; animation-delay: 0s; }
-        .shape:nth-child(6) { left: 75%; width: 110px; height: 110px; animation-delay: 3s; }
-        .shape:nth-child(7) { left: 35%; width: 150px; height: 150px; animation-delay: 7s; }
-        .shape:nth-child(8) { left: 50%; width: 25px; height: 25px; animation-delay: 15s; animation-duration: 45s; }
-        .shape:nth-child(9) { left: 20%; width: 15px; height: 15px; animation-delay: 2s; animation-duration: 35s; }
-        .shape:nth-child(10) { left: 85%; width: 150px; height: 150px; animation-delay: 0s; animation-duration: 11s; }
-        .shape:nth-child(11) { left: 5%; animation-delay: 5s; } /* Triangle */
-        .shape:nth-child(12) { left: 90%; animation-delay: 8s; animation-duration: 20s; } /* Plus */
+    .shape.circle { border-radius: 50%; }
+    .shape.triangle {
+      width: 0; height: 0;
+      border-left: 40px solid transparent;
+      border-right: 40px solid transparent;
+      border-bottom: 80px solid rgba(255, 255, 255, 0.15);
+      background: transparent !important;
+    }
+    .shape.plus {
+      background: transparent !important;
+      font-size: 80px;
+      font-weight: bold;
+      color: rgba(255, 255, 255, 0.15);
+    }
 
+    .shape:nth-child(1) { left: 25%; width: 80px; height: 80px; animation-delay: 0s; }
+    .shape:nth-child(2) { left: 10%; width: 20px; height: 20px; animation-delay: 2s; animation-duration: 12s; }
+    .shape:nth-child(3) { left: 70%; width: 20px; height: 20px; animation-delay: 4s; }
+    .shape:nth-child(4) { left: 40%; width: 60px; height: 60px; animation-delay: 0s; animation-duration: 18s; }
+    .shape:nth-child(5) { left: 65%; width: 20px; height: 20px; animation-delay: 0s; }
+    .shape:nth-child(6) { left: 75%; width: 110px; height: 110px; animation-delay: 3s; }
+    .shape:nth-child(7) { left: 35%; width: 150px; height: 150px; animation-delay: 7s; }
+    .shape:nth-child(8) { left: 50%; width: 25px; height: 25px; animation-delay: 15s; animation-duration: 45s; }
+    .shape:nth-child(9) { left: 20%; width: 15px; height: 15px; animation-delay: 2s; animation-duration: 35s; }
+    .shape:nth-child(10) { left: 85%; width: 150px; height: 150px; animation-delay: 0s; animation-duration: 11s; }
+    .shape:nth-child(11) { left: 5%; animation-delay: 5s; }
+    .shape:nth-child(12) { left: 90%; animation-delay: 8s; animation-duration: 20s; }
 
-        @keyframes float {
-            0% {
-                transform: translateY(0) rotate(0deg);
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100vh) rotate(720deg); /* Bergerak ke atas sambil berputar */
-                opacity: 0;
-            }
-        }
-    </style>
+    @keyframes float {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    }
+  </style>
 </head>
 <body id="main-container" class="background-transition bg-gradient-to-br from-cyan-500 to-blue-600">
+  <div id="background-animations">
+    <div class="shape circle"></div><div class="shape circle"></div><div class="shape circle"></div><div class="shape circle"></div>
+    <div class="shape circle"></div><div class="shape circle"></div><div class="shape circle"></div><div class="shape circle"></div>
+    <div class="shape circle"></div><div class="shape circle"></div>
+    <div class="shape triangle"></div>
+    <div class="shape plus">+</div>
+  </div>
 
-    <!-- Kontainer untuk elemen animasi di latar belakang -->
-    <div id="background-animations">
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape circle"></div>
-        <div class="shape triangle"></div>
-        <div class="shape plus">+</div>
-    </div>
+  <div class="relative flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 md:p-8 text-white text-center overflow-y-auto z-10">
+    <main id="main-content" class="w-full max-w-4xl">
+      <h2 id="animated-greeting" class="font-poppins font-semibold text-2xl md:text-3xl mb-4 h-10 transition-opacity duration-500"></h2>
+      <div class="mb-6">
+        <img id="avatar-image" src="https://placehold.co/200x200/7C3AED/FFFFFF?text=Sobat+1"
+             class="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-2xl mx-auto transition-all duration-700 ease-in-out transform hover:scale-105"/>
+      </div>
 
-    <!-- Konten utama dipindahkan ke z-index yang lebih tinggi -->
-    <div class="relative flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 md:p-8 text-white text-center overflow-y-auto z-10">
+      <h1 class="font-poppins font-extrabold text-4xl sm:text-5xl md:text-6xl lg:text-7xl uppercase tracking-wider text-glow">
+        MPLS RAMAH 2025
+      </h1>
+      <p class="font-semibold text-lg md:text-xl mt-2 text-yellow-300">"The Bridge to Success"</p>
+      <p class="mt-4 text-base md:text-lg">Tahun Ajaran 2025/2026</p>
+      <p class="mt-8 text-xl md:text-2xl animate-pulse">Tunggu sebentar ya, Adik-Adik!</p>
 
-        <!-- Kontainer utama yang akan disembunyikan setelah timer selesai -->
-        <main id="main-content" class="w-full max-w-4xl">
-            <!-- Teks sapaan yang berganti-ganti -->
-            <h2 id="animated-greeting" class="font-poppins font-semibold text-2xl md:text-3xl mb-4 h-10 transition-opacity duration-500"></h2>
-
-            <!-- Avatar yang berubah-ubah -->
-            <div class="mb-6">
-                <img id="avatar-image" src="https://placehold.co/200x200/7C3AED/FFFFFF?text=Sobat+1" alt="Avatar MPLS" 
-                     class="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-2xl mx-auto transition-all duration-700 ease-in-out transform hover:scale-105">
-            </div>
-
-            <!-- Judul Utama -->
-            <h1 class="font-poppins font-extrabold text-4xl sm:text-5xl md:text-6xl lg:text-7xl uppercase tracking-wider text-glow">
-                MPLS RAMAH 2025
-            </h1>
-            <p class="font-semibold text-lg md:text-xl mt-2 text-yellow-300">"The Bridge to Success"</p>
-            <p class="mt-4 text-base md:text-lg">Tahun Ajaran 2025/2026</p>
-
-            <!-- Pesan Tunggu -->
-            <p class="mt-8 text-xl md:text-2xl animate-pulse">
-                Tunggu sebentar ya, Adik-Adik!
-            </p>
-
-            <!-- Timer Hitung Mundur -->
-            <div id="timer-container" class="mt-8">
-                <p class="text-lg mb-2">Sesi akan dimulai dalam:</p>
-                <div class="bg-white/20 backdrop-blur-sm p-4 rounded-2xl inline-block shadow-lg">
-                    <span id="minutes" class="font-roboto-mono text-5xl md:text-7xl font-bold">30</span>
-                    <span class="font-roboto-mono text-5xl md:text-7xl font-bold mx-2">:</span>
-                    <span id="seconds" class="font-roboto-mono text-5xl md:text-7xl font-bold">00</span>
-                </div>
-            </div>
-        </main>
-
-        <!-- Konten yang akan muncul setelah timer selesai (awalnya disembunyikan) -->
-        <div id="reveal-container" class="hidden w-full max-w-2xl animate-fade-in-up">
-            <h1 class="font-poppins font-extrabold text-4xl sm:text-5xl md:text-6xl mb-6">Selamat Datang di</h1>
-            <img src="https://placehold.co/500x200/FFFFFF/000000?text=LOGO+SMPN+3+MENTOK" 
-                 alt="Logo SMPN 3 Mentok"
-                 onerror="this.onerror=null;this.src='https://placehold.co/400x150/FFFFFF/000000?text=Logo+Sekolah';"
-                 class="max-w-xs md:max-w-md mx-auto rounded-lg shadow-2xl mb-8">
-            <p class="text-2xl md:text-3xl font-semibold">Keluarga Besar SMPN 3 Mentok!</p>
-            <p class="text-lg mt-12 text-gray-300">Teknologi dibuat oleh <span class="font-bold">M.IRHAM</span></p>
+      <div id="timer-container" class="mt-8">
+        <p class="text-lg mb-2">Sesi akan dimulai dalam:</p>
+        <div class="bg-white/20 backdrop-blur-sm p-4 rounded-2xl inline-block shadow-lg">
+          <span id="minutes" class="font-roboto-mono text-5xl md:text-7xl font-bold">00</span>
+          <span class="font-roboto-mono text-5xl md:text-7xl font-bold mx-2">:</span>
+          <span id="seconds" class="font-roboto-mono text-5xl md:text-7xl font-bold">30</span>
         </div>
+      </div>
+    </main>
 
+    <div id="reveal-container" class="hidden w-full max-w-2xl animate-fade-in-up">
+      <h1 class="font-poppins font-extrabold text-4xl sm:text-5xl md:text-6xl mb-6">Selamat Datang di</h1>
+      <img src="https://placehold.co/500x200/FFFFFF/000000?text=LOGO+SMPN+3+MENTOK"
+           onerror="this.onerror=null;this.src='https://placehold.co/400x150/FFFFFF/000000?text=Logo+Sekolah';"
+           class="max-w-xs md:max-w-md mx-auto rounded-lg shadow-2xl mb-8"/>
+      <p class="text-2xl md:text-3xl font-semibold">Keluarga Besar SMPN 3 Mentok!</p>
+      <p class="text-lg mt-12 text-gray-300">Teknologi dibuat oleh <span class="font-bold">M.IRHAM</span></p>
     </div>
+  </div>
 
-    <script>
-        // --- Pengaturan Awal ---
-        const greetingElement = document.getElementById('animated-greeting');
-        const avatarElement = document.getElementById('avatar-image');
-        const mainContainer = document.getElementById('main-container');
-        
-        const mainContent = document.getElementById('main-content');
-        const revealContainer = document.getElementById('reveal-container');
-        
-        const minutesEl = document.getElementById('minutes');
-        const secondsEl = document.getElementById('seconds');
+  <script>
+    const greetingElement = document.getElementById('animated-greeting');
+    const avatarElement = document.getElementById('avatar-image');
+    const mainContainer = document.getElementById('main-container');
+    const mainContent = document.getElementById('main-content');
+    const revealContainer = document.getElementById('reveal-container');
+    const minutesEl = document.getElementById('minutes');
+    const secondsEl = document.getElementById('seconds');
 
-        // --- Data untuk Konten Dinamis ---
-        const greetings = ["Halo Sobat Spenta!", "Halo Sobat MPLS!", "SMPN 3 MENTOK"];
-        const avatars = [
-            'https://osisspentamuntok.rf.gd/logo.png',
-            'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQO6KfaScYeDQqwHnL7ZxOslDj4SRVAOaofDOP04khTgh7rI_rbAAy8FCkI&s=10',
-            'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRs-twY9Nntxui6RVr9IDCPSEqyZa9mCTknRlOCtlrD-Q&s',
-            'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS6IAp_MjFNGQfUp_24PH2xXkloo-mq93KefWHcteegFw&s'
-        ];
-        const backgrounds = [
-            'from-cyan-500 to-blue-600',
-            'from-emerald-500 to-teal-600',
-            'from-purple-600 to-indigo-700',
-            'from-rose-500 to-pink-600',
-            'from-amber-500 to-orange-600'
-        ];
+    const greetings = ["Halo Sobat Spenta!", "Halo Sobat MPLS!", "SMPN 3 MENTOK"];
+    const avatars = [
+      'https://osisspentamuntok.rf.gd/logo.png',
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQO6KfaScYeDQqwHnL7ZxOslDj4SRVAOaofDOP04khTgh7rI_rbAAy8FCkI&s=10',
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRs-twY9Nntxui6RVr9IDCPSEqyZa9mCTknRlOCtlrD-Q&s',
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS6IAp_MjFNGQfUp_24PH2xXkloo-mq93KefWHcteegFw&s'
+    ];
+    const backgrounds = [
+      'from-cyan-500 to-blue-600',
+      'from-emerald-500 to-teal-600',
+      'from-purple-600 to-indigo-700',
+      'from-rose-500 to-pink-600',
+      'from-amber-500 to-orange-600'
+    ];
 
-        let greetingIndex = 0;
-        let avatarIndex = 0;
-        let backgroundIndex = 0;
+    let greetingIndex = 0;
+    let avatarIndex = 0;
+    let backgroundIndex = 0;
 
-        // --- Fungsi untuk Animasi Teks Sapaan ---
-        function changeGreeting() {
-            greetingElement.style.opacity = 0;
-            setTimeout(() => {
-                greetingIndex = (greetingIndex + 1) % greetings.length;
-                greetingElement.textContent = greetings[greetingIndex];
-                greetingElement.style.opacity = 1;
-            }, 500); // Waktu untuk fade out
-        }
+    function changeGreeting() {
+      greetingElement.style.opacity = 0;
+      setTimeout(() => {
+        greetingIndex = (greetingIndex + 1) % greetings.length;
+        greetingElement.textContent = greetings[greetingIndex];
+        greetingElement.style.opacity = 1;
+      }, 500);
+    }
 
-        // --- Fungsi untuk Mengubah Avatar ---
-        function changeAvatar() {
-            avatarIndex = (avatarIndex + 1) % avatars.length;
-            avatarElement.src = avatars[avatarIndex];
-        }
-        
-        // --- [FIXED] Fungsi untuk Mengubah Latar Belakang ---
-        function changeBackground() {
-            // Hapus kelas background yang lama dengan memecahnya menjadi array
-            const oldClasses = backgrounds[backgroundIndex].split(' ');
-            mainContainer.classList.remove(...oldClasses);
+    function changeAvatar() {
+      avatarIndex = (avatarIndex + 1) % avatars.length;
+      avatarElement.src = avatars[avatarIndex];
+    }
 
-            // Tentukan index untuk background baru
-            backgroundIndex = (backgroundIndex + 1) % backgrounds.length;
-            
-            // Tambahkan kelas background yang baru dengan memecahnya menjadi array
-            const newClasses = backgrounds[backgroundIndex].split(' ');
-            mainContainer.classList.add(...newClasses);
-        }
+    function changeBackground() {
+      const oldClasses = backgrounds[backgroundIndex].split(' ');
+      mainContainer.classList.remove(...oldClasses);
+      backgroundIndex = (backgroundIndex + 1) % backgrounds.length;
+      const newClasses = backgrounds[backgroundIndex].split(' ');
+      mainContainer.classList.add(...newClasses);
+    }
 
-        // --- Logika Hitung Mundur ---
-        // Atur waktu hitung mundur (30 menit dari sekarang)
-        const countdownDuration = 00 * 60 * 1000;
-        // Untuk testing, bisa diubah ke waktu yang lebih singkat, misal 10 detik (10 * 1000)
-        // const countdownDuration = 10 * 1000; 
-        const targetTime = new Date().getTime() + countdownDuration;
+    const countdownDuration = 30 * 1000;
+    const targetTime = new Date().getTime() + countdownDuration;
 
-        const timerInterval = setInterval(() => {
-            const now = new Date().getTime();
-            const distance = targetTime - now;
+    const timerInterval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = targetTime - now;
 
-            if (distance < 0) {
-                clearInterval(timerInterval);
-                // Sembunyikan konten utama dan tampilkan konten reveal
-                mainContent.style.display = 'none';
-                document.getElementById('background-animations').style.display = 'none'; // Sembunyikan animasi bg juga
-                revealContainer.classList.remove('hidden');
-                revealContainer.classList.add('flex', 'flex-col', 'items-center', 'justify-center');
-                // Ganti background ke tema final yang lebih megah
-                mainContainer.className = 'background-transition bg-gradient-to-br from-gray-800 via-purple-900 to-gray-900 min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 text-white text-center';
-                return;
-            }
+      if (distance < 0) {
+        clearInterval(timerInterval);
+        mainContent.style.display = 'none';
+        document.getElementById('background-animations').style.display = 'none';
+        revealContainer.classList.remove('hidden');
+        revealContainer.classList.add('flex', 'flex-col', 'items-center', 'justify-center');
+        mainContainer.className = 'background-transition bg-gradient-to-br from-gray-800 via-purple-900 to-gray-900 min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 text-white text-center';
+        return;
+      }
 
-            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      minutesEl.textContent = String(minutes).padStart(2, '0');
+      secondsEl.textContent = String(seconds).padStart(2, '0');
+    }, 1000);
 
-            // Tampilkan waktu dengan format 2 digit
-            minutesEl.textContent = String(minutes).padStart(2, '0');
-            secondsEl.textContent = String(seconds).padStart(2, '0');
-
-        }, 1000);
-
-        // --- Menjalankan Semua Animasi saat Halaman Dimuat ---
-        window.onload = () => {
-            // Tampilkan sapaan pertama secara langsung
-            greetingElement.textContent = greetings[0];
-            greetingElement.style.opacity = 1;
-            
-            // Atur interval untuk mengubah konten
-            setInterval(changeGreeting, 4000); // Ganti sapaan setiap 4 detik
-            setInterval(changeAvatar, 3000); // Ganti avatar setiap 3 detik
-            setInterval(changeBackground, 10000); // Ganti background setiap 10 detik
-        };
-    </script>
-
+    window.onload = () => {
+      greetingElement.textContent = greetings[0];
+      greetingElement.style.opacity = 1;
+      setInterval(changeGreeting, 4000);
+      setInterval(changeAvatar, 3000);
+      setInterval(changeBackground, 10000);
+    };
+  </script>
 </body>
 </html>
