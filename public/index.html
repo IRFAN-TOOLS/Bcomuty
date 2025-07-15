@@ -45,9 +45,10 @@
         .aurora-shape {
             position: absolute;
             border-radius: 50%;
-            filter: blur(150px); /* Softer blur */
-            opacity: 0.3; /* More subtle */
+            filter: blur(80px); /* Blur dikurangi supaya ringan */
+            opacity: 0.3;
             transition: transform 20s ease-in-out, background-color 5s ease-in-out;
+            will-change: transform, opacity;
         }
         .shape1 {
             width: 450px; height: 450px;
@@ -67,7 +68,6 @@
             bottom: 25%; right: 35%;
             animation: move-aurora3 30s infinite alternate ease-in-out;
         }
-
         @keyframes move-aurora1 {
             to { transform: translate(15vw, 20vh) rotate(120deg) scale(1.1); }
         }
@@ -78,13 +78,14 @@
             to { transform: translate(10vw, -25vh) rotate(-100deg) scale(1.2); }
         }
 
-        /* --- REFINED: Polkadot "Blop Blop" Animation --- */
+        /* --- REFINED: Polkadot \"Blop Blop\" Animation --- */
         .blob {
             position: absolute;
             background: rgba(255, 255, 255, 0.05);
             border-radius: 50%;
             animation: move-blob 15s infinite ease-in-out;
             opacity: 0;
+            will-change: transform, opacity;
         }
         @keyframes move-blob {
             0%, 100% { transform: scale(0.5) translate(0, 50px); opacity: 0; }
@@ -121,7 +122,7 @@
             background: rgba(35, 39, 50, 0.6);
             border-color: rgba(255, 255, 255, 0.15);
         }
-        
+
         /* --- ENHANCED: Readability & Style --- */
         .text-shadow-strong { text-shadow: 0 4px 15px rgba(0, 0, 0, 0.6); }
         .gradient-text {
@@ -146,10 +147,10 @@
         <!-- Hero Section -->
         <section class="min-h-screen flex flex-col items-center justify-center text-center p-4">
             <div class="animate-fade-in-up">
-                <img id="avatar-image" src="https://osisspentamuntok.rf.gd/logo.png" alt="Avatar MPLS" class="w-32 h-32 md:w-36 md:h-36 rounded-full object-cover border-4 border-white/20 shadow-2xl mx-auto mb-6 transition-all duration-700 ease-in-out" style="animation: pulse-glow 4s infinite ease-in-out;">
-                
+                <img id="avatar-image" loading="lazy" src="https://osisspentamuntok.rf.gd/logo.png" alt="Avatar MPLS" class="w-32 h-32 md:w-36 md:h-36 rounded-full object-cover border-4 border-white/20 shadow-2xl mx-auto mb-6 transition-all duration-700 ease-in-out" style="animation: pulse-glow 4s infinite ease-in-out;">
+
                 <h2 id="animated-greeting" class="font-poppins font-medium text-2xl md:text-3xl mb-2 h-10 text-shadow-strong transition-opacity duration-500 text-gray-300"></h2>
-                
+
                 <h1 class="font-poppins font-black text-5xl sm:text-6xl md:text-8xl uppercase tracking-tighter text-white text-shadow-strong">
                     MPLS 2025
                 </h1>
@@ -177,7 +178,7 @@
                     Pilih materi yang tersedia Untuk disampaikan. Masing-masing memiliki waktu nya tersindiri.
                 </p>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-                    
+
                     <div class="glass-effect p-6 rounded-2xl reveal-on-scroll opacity-60 cursor-not-allowed" style="transition-delay: 0.2s;">
                         <div class="w-16 h-16 mx-auto mb-4 text-red-400/70 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10a4 4 0 0 0-3.46-3.97l-2.04-1.22a4 4 0 0 0-4.99 4.99l-1.22 2.04A4 4 0 0 0 10 18a4 4 0 0 0 3.97-3.46l2.04-1.22A4 4 0 0 0 18 10Z"/><path d="m2 2 20 20"/></svg></div>
                         <h3 class="font-poppins text-xl font-bold text-white">PBB</h3>
@@ -201,130 +202,85 @@
                 </div>
             </div>
         </section>
-        
-        <footer class="text-center py-8 px-4">
-            <p class="text-sm text-gray-500">© 2025 SMPN 3 Mentok. All Rights Reserved.</p>
-            <p class="text-sm font-roboto-mono text-gray-600 mt-1">Teknologi by M.IRHAM</p>
-        </footer>
-    </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const greetingElement = document.getElementById('animated-greeting');
-            const minutesEl = document.getElementById('minutes');
-            const secondsEl = document.getElementById('seconds');
-            const avatarImage = document.getElementById('avatar-image');
-            const animatedBgContainer = document.getElementById('animated-background');
+      <footer class="text-center py-8 px-4">
+                <p class="text-gray-500 text-sm">
+                    &copy; 2025 OSIS SMPN 3 MENTOK. MPLS RAMAH 2025/2026 – Dibangun oleh Irham 👨‍💻
+                </p>
+            </footer>
+        </div>
 
-            // --- REFINED: Color Palette & Dynamic Background ---
-            const colorPalettes = [
-                { bg: '#0d1117', a1: '#3b82f6', a2: '#8b5cf6', a3: '#14b8a6' }, // Default
-                { bg: '#110d17', a1: '#ec4899', a2: '#d946ef', a3: '#f97316' }, // Sunset
-                { bg: '#0d1714', a1: '#22c55e', a2: '#14b8a6', a3: '#84cc16' }, // Forest
-                { bg: '#170d0d', a1: '#ef4444', a2: '#f97316', a3: '#eab308' }  // Fire
-            ];
-            let currentPaletteIndex = 0;
+        <!-- JS TIMER -->
+        <script>
+            let timerDuration = 15 * 60; // 15 menit
+            const timer = setInterval(() => {
+                const minutes = Math.floor(timerDuration / 60);
+                const seconds = timerDuration % 60;
+                document.getElementById("minutes").textContent = String(minutes).padStart(2, '0');
+                document.getElementById("seconds").textContent = String(seconds).padStart(2, '0');
 
-            function changeTheme() {
-                currentPaletteIndex = (currentPaletteIndex + 1) % colorPalettes.length;
-                const newPalette = colorPalettes[currentPaletteIndex];
-                const root = document.documentElement;
-                
-                // Change CSS variables which will smoothly transition colors
-                root.style.setProperty('--bg-color', newPalette.bg);
-                root.style.setProperty('--aurora-1', newPalette.a1);
-                root.style.setProperty('--aurora-2', newPalette.a2);
-                root.style.setProperty('--aurora-3', newPalette.a3);
-                document.body.style.backgroundColor = newPalette.bg;
-            }
-            setInterval(changeTheme, 12000); // Change theme every 12 seconds
-
-            // --- REFINED: Background Element Creation ---
-            function setupBackground() {
-                // Create Auroras
-                for (let i = 1; i <= 3; i++) {
-                    const shape = document.createElement('div');
-                    shape.classList.add('aurora-shape', `shape${i}`);
-                    animatedBgContainer.appendChild(shape);
-                }
-                // Create Blobs
-                const numberOfBlobs = 20;
-                for (let i = 0; i < numberOfBlobs; i++) {
-                    const blob = document.createElement('div');
-                    blob.classList.add('blob');
-                    const size = Math.random() * 25 + 5;
-                    blob.style.width = `${size}px`;
-                    blob.style.height = `${size}px`;
-                    blob.style.left = `${Math.random() * 100}%`;
-                    blob.style.top = `${Math.random() * 100}%`;
-                    blob.style.animationDuration = `${Math.random() * 10 + 10}s`;
-                    blob.style.animationDelay = `${Math.random() * 8}s`;
-                    animatedBgContainer.appendChild(blob);
-                }
-            }
-            setupBackground();
-
-            // --- REFINED: Avatar Image Rotator ---
-            const avatarImages = [
-                'https://osisspentamuntok.rf.gd/logo.png',
-                'https://portalspenta.rf.gd/wp-content/uploads/2025/05/20250501_093643-768x430.jpg',
-                'https://portalspenta.rf.gd/wp-content/uploads/2025/05/IMG_20250520_073044_266-768x576.jpg',
-                'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSgEy9lQ2fGSjJ5l4S2H7eGYesQQgV4OhZmwTwFozGYvw&s',
-
-'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTeHZ9TWPOI_u8swwTQsrCq3jCl52u4NvKv_X3QVgbaPA&s'
-            ];
-            let currentAvatarIndex = 0;
-            function changeAvatar() {
-                currentAvatarIndex = (currentAvatarIndex + 1) % avatarImages.length;
-                avatarImage.style.opacity = '0';
-                avatarImage.style.transform = 'scale(0.9) rotate(-5deg)';
-                setTimeout(() => {
-                    avatarImage.src = avatarImages[currentAvatarIndex];
-                    avatarImage.style.opacity = '1';
-                    avatarImage.style.transform = 'scale(1) rotate(0deg)';
-                }, 700);
-            }
-            setInterval(changeAvatar, 5000);
-
-            // Greeting rotation
-            const greetings = ["Halo Sobat Spenta!", "Selamat Datang Generasi Hebat!", "Mulai Petualanganmu!"];
-            let greetingIndex = 0;
-            function changeGreeting() {
-                greetingElement.style.opacity = 0;
-                setTimeout(() => {
-                    greetingIndex = (greetingIndex + 1) % greetings.length;
-                    greetingElement.textContent = greetings[greetingIndex];
-                    greetingElement.style.opacity = 1;
-                }, 500);
-            }
-            greetingElement.textContent = greetings[0];
-            setInterval(changeGreeting, 4000);
-
-            // Countdown Timer
-            const countdownDuration = 15 * 60;
-            let remainingTime = countdownDuration;
-            const timerInterval = setInterval(() => {
-                if (remainingTime < 0) {
-                    clearInterval(timerInterval);
-                    return;
-                }
-                const minutes = Math.floor(remainingTime / 60);
-                const seconds = remainingTime % 60;
-                minutesEl.textContent = String(minutes).padStart(2, '0');
-                secondsEl.textContent = String(seconds).padStart(2, '0');
-                remainingTime--;
+                if (timerDuration <= 0) clearInterval(timer);
+                timerDuration--;
             }, 1000);
+        </script>
 
-            // On-scroll reveal animation
+        <!-- Greeting Animation -->
+        <script>
+            const greetings = [
+                "Halo Sobat Spenta! 👋",
+                "Halo Sobat MPLS! 🌈",
+                "Selamat datang di Era Baru! 🚀",
+                "MPLS RAMAH 2025/2026 💡"
+            ];
+            let greetIndex = 0;
+            const greetEl = document.getElementById("animated-greeting");
+            function updateGreeting() {
+                greetEl.textContent = greetings[greetIndex];
+                greetIndex = (greetIndex + 1) % greetings.length;
+                setTimeout(updateGreeting, 2500);
+            }
+            updateGreeting();
+        </script>
+
+        <!-- Reveal on Scroll -->
+        <script>
+            const revealElements = document.querySelectorAll(".reveal-on-scroll");
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
-                        entry.target.classList.add('is-visible');
+                        entry.target.classList.add("is-visible");
+                        observer.unobserve(entry.target);
                     }
                 });
-            }, { threshold: 0.1 });
-            document.querySelectorAll('.reveal-on-scroll').forEach(el => observer.observe(el));
-        });
-    </script>
-</body>
+            }, { threshold: 0.2 });
+            revealElements.forEach(el => observer.observe(el));
+        </script>
+
+        <!-- Animated Background Blobs -->
+        <script>
+            const bg = document.getElementById("animated-background");
+            const totalBlobs = 25;
+            for (let i = 0; i < totalBlobs; i++) {
+                const blob = document.createElement("div");
+                blob.className = "blob";
+                const size = Math.floor(Math.random() * 12) + 4;
+                blob.style.width = `${size}px`;
+                blob.style.height = `${size}px`;
+                blob.style.left = `${Math.random() * 100}vw`;
+                blob.style.top = `${Math.random() * 100}vh`;
+                blob.style.animationDuration = `${10 + Math.random() * 10}s`;
+                blob.style.animationDelay = `${Math.random() * 10}s`;
+                bg.appendChild(blob);
+            }
+
+            // Aurora Shapes
+            const shape1 = document.createElement("div");
+            shape1.className = "aurora-shape shape1";
+            const shape2 = document.createElement("div");
+            shape2.className = "aurora-shape shape2";
+            const shape3 = document.createElement("div");
+            shape3.className = "aurora-shape shape3";
+            bg.append(shape1, shape2, shape3);
+        </script>
+    </body>
 </html>
