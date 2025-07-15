@@ -9,25 +9,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Poppins:wght@600;800&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet"/>
   <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      overflow: hidden;
-    }
+    body { font-family: 'Inter', sans-serif; overflow: hidden; }
     .font-poppins { font-family: 'Poppins', sans-serif; }
     .font-roboto-mono { font-family: 'Roboto Mono', monospace; }
-
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
     }
     .animate-fade-in-up { animation: fadeInUp 0.8s ease-out forwards; }
-
     @keyframes glow {
       0%, 100% { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #007bff, 0 0 20px #007bff; }
       50% { text-shadow: 0 0 10px #fff, 0 0 15px #007bff, 0 0 20px #007bff, 0 0 25px #007bff; }
     }
     .text-glow { animation: glow 2s ease-in-out infinite; }
-
     .background-transition { transition: background 2s ease-in-out; }
 
     #background-animations {
@@ -105,9 +99,9 @@
       <div id="timer-container" class="mt-8">
         <p class="text-lg mb-2">Sesi akan dimulai dalam:</p>
         <div class="bg-white/20 backdrop-blur-sm p-4 rounded-2xl inline-block shadow-lg">
-          <span id="minutes" class="font-roboto-mono text-5xl md:text-7xl font-bold">00</span>
+          <span id="minutes" class="font-roboto-mono text-5xl md:text-7xl font-bold">15</span>
           <span class="font-roboto-mono text-5xl md:text-7xl font-bold mx-2">:</span>
-          <span id="seconds" class="font-roboto-mono text-5xl md:text-7xl font-bold">30</span>
+          <span id="seconds" class="font-roboto-mono text-5xl md:text-7xl font-bold">00</span>
         </div>
       </div>
     </main>
@@ -172,7 +166,7 @@
       mainContainer.classList.add(...newClasses);
     }
 
-    const countdownDuration = 30 * 1000;
+    const countdownDuration = 15 * 60 * 1000; // 15 menit
     const targetTime = new Date().getTime() + countdownDuration;
 
     const timerInterval = setInterval(() => {
