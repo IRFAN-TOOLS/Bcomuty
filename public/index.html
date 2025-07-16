@@ -1,33 +1,35 @@
 <!DOCTYPE html>
-<html lang="id" class="scroll-smooth">
+<html lang="id">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MPLS SMPN 3 MENTOK 2025 - Era Baru</title>
+    <title>MPLS SMPN 3 MENTOK 2025 - Edisi Hutan</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;700;900&family=Inter:wght@400;600&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet" />
     <style>
-        /* Base Styling */
+        /* Base Styling - Forest Theme */
         :root {
-            --bg-color: #0d1117; /* GitHub dark mode color as base */
-            --aurora-1: #3b82f6;
-            --aurora-2: #8b5cf6;
-            --aurora-3: #14b8a6;
+            --bg-color: #0c140d; /* Dark forest green */
+            --aurora-1: #22c55e; /* Green */
+            --aurora-2: #84cc16; /* Lime */
+            --aurora-3: #14b8a6; /* Teal */
+            --firefly-color: rgba(234, 179, 8, 0.7); /* Yellow for fireflies */
         }
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
-            color: #e5e5e5;
-            overflow: hidden; /* Mencegah scroll di level body */
+            color: #e5e7eb; /* Light gray for text */
+            overflow: hidden;
             height: 100vh;
+            width: 100vw;
             transition: background-color 2s ease-in-out;
         }
         .font-poppins { font-family: 'Poppins', sans-serif; }
         .font-roboto-mono { font-family: 'Roboto Mono', monospace; }
 
-        /* --- REFINED: Animated Background --- */
+        /* Animated Background (Forest/Aurora Theme) */
         #animated-background {
             position: fixed;
             top: 0;
@@ -40,222 +42,167 @@
         .aurora-shape {
             position: absolute;
             border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.3;
-            transition: transform 20s ease-in-out, background-color 5s ease-in-out;
-            will-change: transform, opacity;
+            filter: blur(100px);
+            opacity: 0.25;
+            animation: move-aurora 30s infinite alternate ease-in-out;
         }
-        .shape1 {
-            width: 450px; height: 450px;
-            background: var(--aurora-1);
-            top: -100px; left: -150px;
-            animation: move-aurora1 35s infinite alternate ease-in-out;
-        }
-        .shape2 {
-            width: 400px; height: 400px;
-            background: var(--aurora-2);
-            bottom: -120px; right: -180px;
-            animation: move-aurora2 40s infinite alternate ease-in-out;
-        }
-        .shape3 {
-            width: 350px; height: 350px;
-            background: var(--aurora-3);
-            bottom: 25%; right: 35%;
-            animation: move-aurora3 30s infinite alternate ease-in-out;
-        }
-        @keyframes move-aurora1 {
-            to { transform: translate(15vw, 20vh) rotate(120deg) scale(1.1); }
-        }
-        @keyframes move-aurora2 {
-            to { transform: translate(-20vw, -15vh) rotate(90deg) scale(0.9); }
-        }
-        @keyframes move-aurora3 {
-            to { transform: translate(10vw, -25vh) rotate(-100deg) scale(1.2); }
+        .shape1 { width: 500px; height: 500px; background: var(--aurora-1); top: -150px; left: -200px; animation-duration: 35s; }
+        .shape2 { width: 450px; height: 450px; background: var(--aurora-2); bottom: -150px; right: -250px; animation-duration: 40s; }
+        .shape3 { width: 400px; height: 400px; background: var(--aurora-3); bottom: 20%; right: 30%; animation-duration: 30s; }
+        @keyframes move-aurora {
+            from { transform: translate(0, 0) rotate(0deg) scale(1); }
+            to { transform: translate(20vw, 15vh) rotate(120deg) scale(1.2); }
         }
 
-        /* --- REFINED: Polkadot \"Blop Blop\" Animation --- */
-        .blob {
+        /* Firefly Animation */
+        .firefly {
             position: absolute;
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--firefly-color);
             border-radius: 50%;
-            animation: move-blob 15s infinite ease-in-out;
+            box-shadow: 0 0 8px var(--firefly-color), 0 0 12px var(--firefly-color);
+            animation: move-firefly 15s infinite ease-in-out;
             opacity: 0;
-            will-change: transform, opacity;
         }
-        @keyframes move-blob {
-            0%, 100% { transform: scale(0.5) translate(0, 50px); opacity: 0; }
+        @keyframes move-firefly {
+            0%, 100% { transform: scale(0.8) translate(0, 40px); opacity: 0; }
             10% { opacity: 1; }
-            50% { transform: scale(1.2) translate(20px, -150px); opacity: 0.4; }
+            50% { transform: scale(1.2) translate(30px, -120px); opacity: 0.7; }
             90% { opacity: 1; }
         }
 
-        /* --- ENHANCED: Animations & Effects --- */
-        @keyframes fade-in-up {
-            from { opacity: 0; transform: translateY(40px); }
+        /* General Animations */
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 10px rgba(255,255,255,0.1) inset; }
-            50% { box-shadow: 0 0 35px rgba(59, 130, 246, 0.5), 0 0 12px rgba(255,255,255,0.1) inset; }
+        @keyframes pulse-glow-green {
+            0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3), 0 0 10px rgba(255,255,255,0.1) inset; }
+            50% { box-shadow: 0 0 35px rgba(34, 197, 94, 0.5), 0 0 12px rgba(255,255,255,0.1) inset; }
         }
-        .animate-fade-in-up { animation: fade-in-up 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        .animate-fade-in { animation: fade-in 1s ease-out forwards; }
 
-        /* --- ENHANCED: Glassmorphism Effect --- */
+        /* Glassmorphism Effect (Forest Tint) */
         .glass-effect {
-            background: rgba(25, 29, 40, 0.4);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(12, 43, 22, 0.35);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(130, 204, 22, 0.2);
             transition: background 0.3s, border 0.3s, transform 0.3s;
         }
         .glass-effect:hover {
-            background: rgba(35, 39, 50, 0.6);
-            border-color: rgba(255, 255, 255, 0.15);
+            background: rgba(12, 43, 22, 0.55);
+            border-color: rgba(130, 204, 22, 0.5);
         }
 
-        /* --- ENHANCED: Readability & Style --- */
-        .text-shadow-strong { text-shadow: 0 4px 15px rgba(0, 0, 0, 0.6); }
-        .gradient-text {
-            background: linear-gradient(45deg, #a5b4fc, #d8b4fe);
+        /* Text Styles */
+        .text-shadow-strong { text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7); }
+        .gradient-text-green {
+            background: linear-gradient(45deg, #a3e635, #bbf7d0);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
     </style>
 </head>
 <body>
-    <!-- Container untuk semua elemen visual -->
     <div id="animated-background"></div>
 
-    <!-- Main container yang mengisi seluruh layar -->
-    <main class="relative z-10 flex flex-col items-center justify-between h-screen p-4 overflow-hidden">
+    <main class="relative z-10 flex flex-col items-center justify-center h-screen p-2 sm:p-4 overflow-hidden">
         
-        <!-- Konten Utama (Hero + Materi) -->
-        <div class="flex flex-col items-center justify-center text-center flex-grow">
+        <div class="flex flex-col items-center justify-center text-center w-full max-w-5xl mx-auto">
             
-            <!-- Hero Content -->
-            <div class="animate-fade-in-up">
-                <img id="avatar-image" loading="lazy" src="https://osisspentamuntok.rf.gd/logo.png" alt="Avatar MPLS" class="w-24 h-24 md:w-28 md:h-28 rounded-full object-cover border-4 border-white/20 shadow-2xl mx-auto mb-4 transition-all duration-700 ease-in-out" style="animation: pulse-glow 4s infinite ease-in-out;">
-                <h2 id="animated-greeting" class="font-poppins font-medium text-xl md:text-2xl mb-1 h-8 text-shadow-strong transition-opacity duration-500 text-gray-300"></h2>
-                <h1 class="font-poppins font-black text-4xl sm:text-5xl md:text-6xl uppercase tracking-wider text-white text-shadow-strong">
-                    DAY 3 MPLS SPENTA 2025
-                </h1>
-                <p class="font-medium text-base md:text-lg mt-1 tracking-widest text-shadow-strong gradient-text">"THE BRIDGE TO SUCCESS"</p>
+            <div class="animate-fade-in" style="animation-delay: 0.1s;">
+                 <div class="w-20 h-20 md:w-24 md:h-24 mx-auto mb-2 flex items-center justify-center rounded-full border-4 border-white/20" style="animation: pulse-glow-green 4s infinite ease-in-out;">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 md:h-14 md:w-14 text-green-300" viewBox="0 0 20 20" fill="currentColor"><path d="M17.388,4.751h-2.006c-0.21,0-0.399,0.146-0.466,0.351l-2.689,8.113l-2.689-8.113c-0.067-0.205-0.256-0.351-0.466-0.351H6.612c-0.21,0-0.399,0.146-0.466,0.351l-2.689,8.113L0.768,4.751C0.701,4.546,0.512,4.4,0.302,4.4H0.25C0.112,4.4,0,4.512,0,4.65v10.7C0,15.488,0.112,15.6,0.25,15.6h2.006c0.21,0,0.399-0.146,0.466-0.351l2.689-8.113l2.689,8.113c0.067,0.205,0.256,0.351,0.466,0.351h2.969c0.21,0,0.399-0.146,0.466-0.351l2.689-8.113l2.689,8.113c0.067,0.205,0.256,0.351,0.466,0.351h2.006c0.138,0,0.25-0.112,0.25-0.25V4.65C20,4.512,19.888,4.4,19.75,4.4h-0.052C19.488,4.4,19.3,4.546,19.232,4.751L17.388,4.751z"/></svg>
+                </div>
+                <h1 class="font-poppins font-black text-3xl sm:text-4xl md:text-5xl uppercase tracking-wider text-white text-shadow-strong">MPLS SPENTA 2025</h1>
+                <p class="font-medium text-sm md:text-base mt-1 tracking-widest text-shadow-strong gradient-text-green">"MENJELAJAHI ERA BARU"</p>
             </div>
 
-            <!-- Timer -->
-            <div id="timer-container" class="mt-6 animate-fade-in-up" style="animation-delay: 0.2s;">
-                <div class="glass-effect p-3 md:p-4 rounded-2xl inline-block shadow-lg">
-                    <span id="minutes" class="font-roboto-mono text-4xl md:text-6xl font-bold text-white">15</span>
-                    <span class="font-roboto-mono text-4xl md:text-6xl font-bold text-white mx-1">:</span>
-                    <span id="seconds" class="font-roboto-mono text-4xl md:text-6xl font-bold text-white">00</span>
+            <div id="timer-container" class="mt-3 md:mt-4 animate-fade-in" style="animation-delay: 0.3s;">
+                <div class="glass-effect px-4 py-2 md:px-6 md:py-3 rounded-2xl inline-block shadow-lg">
+                    <span id="minutes" class="font-roboto-mono text-3xl md:text-5xl font-bold text-white">15</span>
+                    <span class="font-roboto-mono text-3xl md:text-5xl font-bold text-white mx-1">:</span>
+                    <span id="seconds" class="font-roboto-mono text-3xl md:text-5xl font-bold text-white">00</span>
                 </div>
             </div>
 
-            <!-- Materials Section -->
-            <div class="container mx-auto max-w-4xl mt-8 animate-fade-in-up" style="animation-delay: 0.4s;">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+            <div class="container mx-auto w-full max-w-4xl mt-3 md:mt-4 animate-fade-in" style="animation-delay: 0.5s;">
+                <h3 class="font-poppins text-base md:text-lg font-bold text-gray-200 mb-2 md:mb-3 text-shadow-strong">Pilih Materi</h3>
+                <div class="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3 text-center">
                     
-                    <!-- Materi 1: PBB -->
-                    <div class="glass-effect p-4 rounded-xl opacity-60 cursor-not-allowed">
-                        <div class="w-12 h-12 mx-auto mb-2 text-red-400/70 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10a4 4 0 0 0-3.46-3.97l-2.04-1.22a4 4 0 0 0-4.99 4.99l-1.22 2.04A4 4 0 0 0 10 18a4 4 0 0 0 3.97-3.46l2.04-1.22A4 4 0 0 0 18 10Z"/><path d="m2 2 20 20"/></svg></div>
-                        <h3 class="font-poppins text-lg font-bold text-white">PBB</h3>
-                        <p class="text-xs text-gray-400 mt-1">(08.00 – 09.30)</p>
-                        <p class="text-xs font-semibold text-red-400/80 mt-2">Praktik Lapangan</p>
+                    <div class="glass-effect p-2 md:p-3 rounded-xl opacity-60 cursor-not-allowed flex flex-col justify-center items-center aspect-square">
+                        <div class="w-8 h-8 md:w-10 md:h-10 text-red-400/70"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10a4 4 0 0 0-3.46-3.97l-2.04-1.22a4 4 0 0 0-4.99 4.99l-1.22 2.04A4 4 0 0 0 10 18a4 4 0 0 0 3.97-3.46l2.04-1.22A4 4 0 0 0 18 10Z"/><path d="m2 2 20 20"/></svg></div>
+                        <h3 class="font-poppins text-xs md:text-sm font-bold text-white mt-1">PBB</h3>
                     </div>
 
-                    <!-- Materi 2: Judi Online -->
-                    <a href="https://www.canva.com/design/DAGtSACJqFk/Ub6ThQHy35rsc1fKO1t2AA/edit?utm_content=DAGtSACJqFk&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton" target="_blank" class="glass-effect p-4 rounded-xl hover:!border-blue-400/50 transition-all duration-300 hover:-translate-y-1 group">
-                        <div class="w-12 h-12 mx-auto mb-2 text-blue-300 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a2.82 2.82 0 0 0 4-4L12 8V2Z"/><path d="M7 7h.01"/><path d="m22 2-4.01 4.01"/></svg></div>
-                        <h3 class="font-poppins text-lg font-bold text-white">Bahaya Judi online</h3>
-                        <p class="text-xs text-gray-400 mt-1">(10.00 – 11.00)</p>
-                        <span class="mt-3 inline-block text-xs font-bold bg-blue-500/30 text-blue-200 px-3 py-1.5 rounded-full border border-blue-400/50 transition-all duration-300 group-hover:bg-blue-500/50">Buka Materi</span>
+                    <a href="https://www.canva.com/design/DAGtSACJqFk/Ub6ThQHy35rsc1fKO1t2AA/edit" target="_blank" class="glass-effect p-2 md:p-3 rounded-xl hover:!border-lime-400/50 hover:-translate-y-1 group flex flex-col justify-center items-center aspect-square">
+                        <div class="w-8 h-8 md:w-10 md:h-10 text-lime-300"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a2.82 2.82 0 0 0 4-4L12 8V2Z"/><path d="M7 7h.01"/><path d="m22 2-4.01 4.01"/></svg></div>
+                        <h3 class="font-poppins text-xs md:text-sm font-bold text-white mt-1">Anti Judi</h3>
                     </a>
 
-                    <!-- Materi 3: Motivasi -->
-                    <a href="https://www.canva.com/design/DAGtPSd2DYo/fdJbMySFuwOSneGglz6Ulw/edit?utm_content=DAGtPSd2DYo&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton" target="_blank" class="glass-effect p-4 rounded-xl hover:!border-purple-400/50 transition-all duration-300 hover:-translate-y-1 group">
-                       <div class="w-12 h-12 mx-auto mb-2 text-yellow-400 flex items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                            </svg>
-                        </div>
-                        <h3 class="font-poppins text-lg font-bold text-white">Motivasi Belajar</h3>
-                        <p class="text-xs text-gray-400 mt-1">(11.00 – 12.00)</p>
-                        <span class="mt-3 inline-block text-xs font-bold bg-purple-500/30 text-purple-200 px-3 py-1.5 rounded-full border border-purple-400/50 transition-all duration-300 group-hover:bg-purple-500/50">Buka Materi</span>
+                    <a href="https://www.canva.com/design/DAGtPSd2DYo/fdJbMySFuwOSneGglz6Ulw/edit" target="_blank" class="glass-effect p-2 md:p-3 rounded-xl hover:!border-teal-400/50 hover:-translate-y-1 group flex flex-col justify-center items-center aspect-square">
+                       <div class="w-8 h-8 md:w-10 md:h-10 text-teal-300"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg></div>
+                        <h3 class="font-poppins text-xs md:text-sm font-bold text-white mt-1">Motivasi</h3>
                     </a>
+
+                    <a href="#" class="glass-effect p-2 md:p-3 rounded-xl hover:!border-amber-400/50 hover:-translate-y-1 group flex flex-col justify-center items-center aspect-square">
+                       <div class="w-8 h-8 md:w-10 md:h-10 text-amber-300"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                        <h3 class="font-poppins text-xs md:text-sm font-bold text-white mt-1">Tata Krama</h3>
+                    </a>
+                    
+                    <a href="#" class="glass-effect p-2 md:p-3 rounded-xl hover:!border-cyan-400/50 hover:-translate-y-1 group flex flex-col justify-center items-center aspect-square">
+                       <div class="w-8 h-8 md:w-10 md:h-10 text-cyan-300"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+                        <h3 class="font-poppins text-xs md:text-sm font-bold text-white mt-1">Wawasan</h3>
+                    </a>
+
+                    <a href="#" class="glass-effect p-2 md:p-3 rounded-xl hover:!border-fuchsia-400/50 hover:-translate-y-1 group flex flex-col justify-center items-center aspect-square">
+                       <div class="w-8 h-8 md:w-10 md:h-10 text-fuchsia-300"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.001 2.002a10 10 0 1 1-7.07 17.07A10 10 0 0 1 12.001 2.002Z"/><path d="M12 12 4.929 4.929"/><path d="m14.121 14.121 5.657 5.657"/><path d="M12 12 4.929 19.071"/><path d="m19.071 4.929-7.071 7.071"/></svg></div>
+                        <h3 class="font-poppins text-xs md:text-sm font-bold text-white mt-1">Ekskul</h3>
+                    </a>
+
                 </div>
             </div>
         </div>
 
-        <!-- Footer -->
-        <footer class="text-center py-4 w-full">
-            <p class="text-gray-500 text-xs">
-                &copy; 2025 OSIS SMPN 3 MENTOK. MPLS RAMAH 2025/2026 – Dibangun oleh Irham 👨‍💻
+        <footer class="text-center py-1 w-full absolute bottom-0 left-0">
+            <p class="text-gray-500 text-[10px] sm:text-xs">
+                &copy; 2025 OSIS SMPN 3 MENTOK. Dibangun oleh Irham 👨‍💻
             </p>
         </footer>
     </main>
 
-    <!-- JS TIMER -->
     <script>
-        let timerDuration = 15 * 60; // 15 menit
+        // JS Timer
+        let timerDuration = 15 * 60;
         const timer = setInterval(() => {
-            if (timerDuration < 0) {
-                clearInterval(timer);
-                return;
-            }
-            const minutes = Math.floor(timerDuration / 60);
-            const seconds = timerDuration % 60;
-            document.getElementById("minutes").textContent = String(minutes).padStart(2, '0');
-            document.getElementById("seconds").textContent = String(seconds).padStart(2, '0');
+            if (timerDuration < 0) { clearInterval(timer); return; }
+            const m = Math.floor(timerDuration / 60);
+            const s = timerDuration % 60;
+            document.getElementById("minutes").textContent = String(m).padStart(2, '0');
+            document.getElementById("seconds").textContent = String(s).padStart(2, '0');
             timerDuration--;
         }, 1000);
-    </script>
 
-    <!-- Greeting Animation -->
-    <script>
-        const greetings = [
-            "Halo Sobat Spenta! 👋",
-            "Halo Sobat MPLS! 🌈",
-            "Selamat datang di Era Baru! 🚀",
-            "MPLS RAMAH 2025/2026 💡"
-        ];
-        let greetIndex = 0;
-        const greetEl = document.getElementById("animated-greeting");
-        function updateGreeting() {
-            if (greetEl) {
-                greetEl.textContent = greetings[greetIndex];
-                greetIndex = (greetIndex + 1) % greetings.length;
-            }
-        }
-        setInterval(updateGreeting, 2500);
-        updateGreeting(); // Panggil sekali di awal
-    </script>
-
-    <!-- Animated Background Blobs & Aurora -->
-    <script>
+        // Animated Background
         const bg = document.getElementById("animated-background");
         if (bg) {
-            // Aurora Shapes
-            const shape1 = document.createElement("div");
-            shape1.className = "aurora-shape shape1";
-            const shape2 = document.createElement("div");
-            shape2.className = "aurora-shape shape2";
-            const shape3 = document.createElement("div");
-            shape3.className = "aurora-shape shape3";
+            const shape1 = document.createElement("div"); shape1.className = "aurora-shape shape1";
+            const shape2 = document.createElement("div"); shape2.className = "aurora-shape shape2";
+            const shape3 = document.createElement("div"); shape3.className = "aurora-shape shape3";
             bg.append(shape1, shape2, shape3);
 
-            // Blobs
-            const totalBlobs = 25;
-            for (let i = 0; i < totalBlobs; i++) {
-                const blob = document.createElement("div");
-                blob.className = "blob";
-                const size = Math.floor(Math.random() * 12) + 4;
-                blob.style.width = `${size}px`;
-                blob.style.height = `${size}px`;
-                blob.style.left = `${Math.random() * 100}vw`;
-                blob.style.top = `${Math.random() * 100}vh`;
-                blob.style.animationDuration = `${10 + Math.random() * 10}s`;
-                blob.style.animationDelay = `${Math.random() * 10}s`;
-                bg.appendChild(blob);
+            const totalFireflies = 30;
+            for (let i = 0; i < totalFireflies; i++) {
+                const firefly = document.createElement("div");
+                firefly.className = "firefly";
+                const size = Math.random() * 2.5 + 1;
+                firefly.style.width = `${size}px`;
+                firefly.style.height = `${size}px`;
+                firefly.style.left = `${Math.random() * 100}vw`;
+                firefly.style.top = `${Math.random() * 100}vh`;
+                firefly.style.animationDuration = `${10 + Math.random() * 15}s`;
+                firefly.style.animationDelay = `${Math.random() * 15}s`;
+                bg.appendChild(firefly);
             }
         }
     </script>
