@@ -1,15 +1,116 @@
 <!DOCTYPE html>
 <html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="A React app built with love by Tuan Irham" />
-    <title>React App</title>
-    <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
-  </head>
-  <body>
-    <noscript>Kamu harus mengaktifkan JavaScript untuk menjalankan aplikasi ini.</noscript>
-    <div id="root"></div>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selamat Datang di SPENSA CONNECT</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts for a nice typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Custom styles to prevent scrolling and apply custom fonts */
+        body {
+            font-family: 'Poppins', sans-serif;
+            /* Prevent scrolling on the page */
+            overflow: hidden;
+        }
+        
+        /* Custom font for the timer */
+        .font-roboto-mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main container for all content -->
+    <div class="w-full max-w-4xl mx-auto text-center flex flex-col items-center">
+
+        <!-- Logo Placeholder -->
+        <div class="mb-4">
+            <!-- A simple SVG logo representing connection/collaboration -->
+            <svg class="w-20 h-20 text-yellow-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2Zm3.414 7.414a1 1 0 0 0-1.414-1.414L11 10.586l-1.414-1.414a1 1 0 1 0-1.414 1.414L9.586 12l-1.414 1.414a1 1 0 1 0 1.414 1.414L11 13.414l1.414 1.414a1 1 0 0 0 1.414-1.414L12.414 12l2.828-2.828Z" clip-rule="evenodd" fill-rule="evenodd" />
+            </svg>
+        </div>
+
+        <!-- Main Title -->
+        <h1 class="text-5xl md:text-7xl font-black tracking-wider uppercase" style="text-shadow: 2px 2px 8px rgba(0,0,0,0.5);">
+            SPENTA <span class="text-yellow-300">x</span> SPENSA
+        </h1>
+
+        <!-- Welcome Message -->
+        <p class="mt-6 text-xl md:text-2xl font-semibold">
+            Selamat Datang Sahabat OSIS SMPN 1 Mentok
+        </p>
+        <p class="text-lg md:text-xl">
+            di SMPN 3 Mentok
+        </p>
+        
+        <p class="mt-8 text-xl md:text-2xl font-light">
+            Mari kita sukseskan kegiatan
+        </p>
+        <h2 class="text-3xl md:text-4xl font-bold text-yellow-300 tracking-wide">
+            SPENSA CONNECT
+        </h2>
+        
+        <!-- Countdown Timer -->
+        <div class="my-10">
+            <div id="countdown-timer" class="font-roboto-mono text-6xl md:text-8xl font-bold bg-white/10 backdrop-blur-sm px-8 py-4 rounded-2xl shadow-lg border border-white/20 transition-all duration-300">
+                15:00
+            </div>
+        </div>
+
+        <!-- Tagline -->
+        <p class="text-2xl md:text-3xl font-semibold italic text-yellow-300" style="text-shadow: 1px 1px 4px rgba(0,0,0,0.5);">
+            ✨ “Berbagi, Bersatu, Berkarya” ✨
+        </p>
+
+    </div>
+
+    <script>
+        // --- Countdown Timer Logic ---
+
+        const countdownElement = document.getElementById('countdown-timer');
+        
+        // Set the duration for the countdown: 15 minutes in seconds.
+        let timeInSeconds = 15 * 60;
+        
+        // Function to update the timer display
+        function updateTimer() {
+            // Calculate minutes and seconds
+            const minutes = Math.floor(timeInSeconds / 60);
+            const seconds = timeInSeconds % 60;
+            
+            // Format the time to always have two digits (e.g., 09:05)
+            const formattedMinutes = String(minutes).padStart(2, '0');
+            const formattedSeconds = String(seconds).padStart(2, '0');
+            
+            // Update the display
+            countdownElement.textContent = `${formattedMinutes}:${formattedSeconds}`;
+            
+            // Check if the timer has run out
+            if (timeInSeconds <= 0) {
+                clearInterval(countdownInterval); // Stop the countdown
+                countdownElement.textContent = 'Waktu Habis';
+                countdownElement.classList.remove('text-6xl', 'md:text-8xl');
+                countdownElement.classList.add('text-4xl', 'md:text-6xl', 'text-red-500'); // Change style when time is up
+            }
+            
+            // Decrease the time by one second for the next interval
+            timeInSeconds--;
+        }
+        
+        // Start the countdown immediately and then update every second
+        updateTimer();
+        const countdownInterval = setInterval(updateTimer, 1000);
+    </script>
+
+</body>
 </html>
